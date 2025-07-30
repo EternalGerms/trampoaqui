@@ -269,7 +269,7 @@ export default function Dashboard() {
                         <Briefcase className="w-4 h-4 mr-2" />
                         Dashboard do Prestador
                       </Button>
-                      <Button variant="outline" onClick={() => setLocation('/')}>
+                      <Button variant="outline" onClick={() => setLocation('/complete-profile')}>
                         <User className="w-4 h-4 mr-2" />
                         Completar Perfil
                       </Button>
