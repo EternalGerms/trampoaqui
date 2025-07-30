@@ -1,0 +1,533 @@
+TRAMPOAQUI: SISTEMA WEB PARA CONTRATAÇÃO DE SERVIÇOS GERAIS
+EM UMA COMUNIDADE:
+* Matheus Esposto Sagae
+**Prof. Viviane de Fátima Bartholo
+RESUMO
+O projeto busca implementar um sistema web que visa tornar fácil contratar serviços
+gerais em uma comunidade, incentivando o relacionamento entre prestadores de serviço
+e contratantes de forma eficiente e segura, tendo em base a dificuldade de acesso a
+profissionais qualificados, falta de clareza de preços e segurança no processo de
+contratação. Com fundamentos de conceitos de engenharia de software e
+desenvolvimento web será utilizado de tecnologias modernas, assegurando sua
+usabilidade, seguidas de uma pesquisa exploratória e levantamento de requisitos junto
+aos possíveis utilizadores, conjugando ainda a aplicação de um desenvolvimento ágil. O
+projeto deve fazer o sistema contribuir para a dinamização do mercado local,
+incentivando a transparência nas contratações e assegurando maior comodidade aos
+utilizadores, resultando num impacto positivo.
+Palavras-chaves: Sistema web, autônomos, serviços gerais.
+ABSTRACT
+The project aims to develop a web system to facilitate the hiring of general services in a
+community, promoting the connection between service providers and contractors in an
+efficient and secure manner, based on solving issues such as difficulty in finding qualified
+professionals, lack of clarity in prices and insecurity in the hiring process. Based on
+software engineering and web development concepts, modern technologies will be used
+to ensure usability, adopting exploratory research and requirements gathering with
+potential users, as well as applying agile development techniques. It is hoped that the
+system will contribute to boosting the local market, promoting transparency in contracting
+and ensuring greater convenience for users, resulting in a positive impact.
+Keywords: Web system, self-employed, general services.
+1​INTRODUÇÃO
+Atualmente, diante da crescente digitalização de serviços no geral, a internet tem
+facilitado a forma como as pessoas buscam e contratam mão de obra para eventuais
+necessidades. Contudo, diversas comunidades menores ainda enfrentam dificuldades
+na busca por prestadores de serviços gerais, visto que muitas vezes isso é feito de
+maneira informal, o que acaba criando questões como precificação justa, confiabilidade
+e o acesso a profissionais qualificados. Dessa forma, um sistema web pode trazer
+benefícios significativos, como transparência, praticidade e segurança tanto para
+prestadores quanto para contratantes.
+A razão da existência desse sistema pode ser justificada em três campos. Na
+área científica, o projeto contribui em futuras soluções tecnológicas voltadas à
+* Matheus Esposto Sagae – Curso Superior de Tecnologia em Análise e Desenvolvimento de
+Sistemas – Faculdade de Tecnlogia de Ourinhos – Fatec Ourinhos – matheus.sagae@fatec.sp.gov.br
+** Viviane de Fátima Bartholo – Curso Superior de Tecnologia em Análise e Desenvolvimento
+de Sistemas – Faculdade de Tecnologia de Ourinhos – Fatec Ourinhos –
+viviane.bartholo01@fatec.sp.gov.br
+
+economia colaborativa, explorando conceitos de desenvolvimento web, segurança da
+informação e usabilidade. Socialmente falando, a adoção do sistema em comunidades
+locais pode aumentar a qualidade de vida dos moradores visto a facilidade na
+contratação de serviços gerais e essenciais, o que incentiva a economia local e contribui
+na qualificação de profissionais. No aspecto pessoal, o trabalho amplia o conhecimento
+do autor no desenvolvimento de sistema, proporcionando uma experiência prática na
+criação de soluções tecnológicas ao implementar os fundamentos da engenharia de
+software e desenvolvimento web que foram lecionados ao decorrer do curso.
+Para a criação do TrampoAqui, foram criados os seguintes objetivos: (i) examinar
+os principais problemas encontrados ao buscar por serviços gerais; (ii) desenvolver e
+implementar um sistema web com uma interface intuitiva; (iii) validar o sistema através
+de testes; e (iv) analisar o impacto social e econômico dentro uma comunidade local ao
+utilizar o sistema.
+Para fundamentar teoricamente o sistema, serão levados em conta autores que
+abordam desenvolvimento web, engenharia de software e tecnologia na economia
+colaborativa, como Sommerville (2011), Pressman (2015) e O'Reilly (2005). Esses
+autores apresentam bases sobre metodologias de desenvolvimento de software,
+melhores práticas para sistemas web e a transformação digital nos serviços.
+A abordagem escolhida para o desenvolvimento do sistema web seguirá um
+modelo incremental, fundamentado na metodologia ágil. O projeto será realizado em
+etapas que incluem: coleta de requisitos, modelagem do sistema, desenvolvimento em
+iterações, testes e validação.
+O objetivo é fornecer uma maneira eficaz para a contratação de serviços gerais,
+impulsionando mais organização, praticidade e segurança nas interações, apresentando
+aos contratantes uma ferramenta confiável para localizar profissionais capacitados.
+Ademais, o projeto pretende contribuir academicamente ao evidenciar a viabilidade de
+soluções digitais para problemas comunitários e estimular pesquisas futuras na área de
+tecnologia aplicada aos serviços.
+2​REFERENCIAL TEÓRICO
+A seguir será apresentado o referencial teórico, que embasa e fundamenta
+conceitos da engenharia de software, plataformas digitais e economia colaborativa, além
+de analisar trabalhos correlatos que explicam as escolhas de metodologias e
+ferramentas do projeto.
+2.1​ DESAFIOS​ E​ OPORTUNIDADES​
+SISTEMAS WEB PARA COMUNIDADES
+
+NO​ DESENVOLVIMENTO​
+
+DE
+
+O desenvolvimento de um sistema web que viabiliza a contratação de serviços
+em comunidades possui dificuldades específicas, visto a necessidade de adaptar-se as
+necessidades e demandas locais para garantir a inclusão digital dos usuários
+(TANENBAUM; WETHERALL, 2016).
+
+Contudo, a criação desse sistema também oferece oportunidades dentro da
+comunidade, como a movimentação da economia local e a formalização de profissionais
+autônomos como Microempreendedores Individuais (MEIs), contribuindo assim para a
+inclusão social e econômica (SEBRAE, 2020).
+2.2​
+
+TRABALHOS CORRELATOS
+
+O desenvolvimento de sistemas web que operam como intermediadores de
+serviços é um tema recente e bastante explorado nas últimas décadas. Dessa forma,
+compreender propostas já desenvolvidas e suas abordagens é essencial para a
+construção de soluções mais inovadoras e adaptadas ao contexto dentro de uma
+comunidade.
+2.2.1​ APLICATIVO DE CONTRATAÇÃO DE SERVIÇOS
+O “Paraná Serviços”, por exemplo, é um aplicativo lançado pelo Governo do
+Estado do Paraná que "conecta contratantes a profissionais autônomos e prestadores
+de serviços em geral" (CODIFICAR, 2023). Disponível para Android e IOS, o aplicativo
+já conta com milhares de downloads e abrange diversas categorias de serviços, como
+"marido de aluguel", diarista, pedreiro e eletricista (Figura 1).
+Figura 1 – Captura da tela do aplicativo “Paraná Serviços”.
+
+Fonte: Disponível em:
+
+https://play.google.com/store/apps/details?id=br.gov.pr.celepar.paranaautonomo&hl=pt_BR.
+Acesso em: 20 mar.2025.
+
+2.2.2​ HOME EASY
+Figura 2 – Tela da página inicial do sistema “Home Easy”
+
+Fonte: Disponível em: https://revistaft.com.br/desenvolvimento-do-home-easy-sistema-de-
+
+solicitacoes-de-servicos.
+Acesso em: 20 mar.2025.
+
+Outro exemplo é o "Home Easy" (Figura 2), que visa facilitar a contratação de
+serviços manuais, aumentando a visibilidade dos profissionais e simplificando o
+processo para os clientes (SOUZA; SILVA, 2022). Esses casos demonstram a relevância
+e a eficácia de sistemas web na intermediação de serviços, destacando a importância
+de interfaces intuitivas e da utilização de tecnologias adequadas no desenvolvimento
+dessas plataformas.
+2.2.3​ BAZZU
+Figura 3 – Interface do sistema “Bazzu”
+
+Fonte: Adaptado de Gentil e Esquivel, 2019, p. 45
+
+"Bazzu" é um sistema web para contratação de serviços (Figura 3). No estudo
+correlato analisado, observou-se que o desenvolvimento de um sistema desse tipo
+passa por diversas etapas metodológicas essenciais, como levantamento de requisitos,
+modelagem arquitetural e implementação utilizando metodologias ágeis como Scrum,
+adotando uma arquitetura robusta para garantir a escalabilidade dos sistema, permitindo
+um melhor gerenciamento de usuários e serviços cadastrados.
+2.2.4​CONSIDERAÇÕES DOS TRABALHOS CORRELATOS
+A análise dos trabalhos correlatos evidencia que os sistemas apresentados
+possuem uma preocupação em comum, no qual permitem a intermediação eficiente
+entre clientes e prestadores de serviços, bem como fornecer interfaces acessíveis,
+responsivas e intuitivas para facilitar essa interação, destacando funcionalidades como
+cadastro de usuários, busca segmentada por categorias, avaliação dos prestadores e
+listagem de serviços.
+Além disso, todos esses sistemas fazem uso de tecnologias web modernas,
+priorizando a experiência do usuário final, e em casos como o sistema Bazzu nota-se a
+adoção de princípios de arquitetura escalável, modularidade e atenção ao desempenho
+do sistema.
+Porém, a maioria dos sistemas é voltada para o uso urbano genérico ou estadual,
+sem um foco específico diretamente citado ao uso em comunidades locais. Além disso,
+o foco na inclusão digital de prestadores com baixa escolaridade tecnológica são
+aspectos ainda pouco explorados nas soluções analisadas.
+O sistema proposto compartilha com os trabalhos correlatas a estrutura básica de
+intermediação entre prestadores e contratantes, contudo se diferencia ao focar no
+atendimento de pequenas comunidades, propondo uma solução adaptada à realidade
+local, promovendo um perfil social e inclusivo, além de valorizar a economia comunitária.
+3​METODOLOGIA
+A seguir, serão apresentados as ferramentas e procedimentos que serão
+utilizados para o desenvolvimento do sistema como um todo, contendo uma breve
+descrição de suas funcionalidades e importância dentro do sistema.
+3.1​FERRAMENTAS
+Para a elaboração dos diagramas incluídos dentro do trabalho será utilizado da
+ferramenta PlantUML, que permite criar modelos e figuras renderizando definições em
+texto próprias mas de fácil aprendizado, tornando-se eficaz na elaboração de diagramas
+de use-case, classes e entidade e relacionamento, que serão posteriormente
+apresentados.
+Demais tecnologias utilizadas no sistema inclui como base a linguagem Java
+visto sua portabilidade e segurança e a utilização do framework Spring Boot para a
+aplicação backend, proporcionando uma estrutura modular e robusta para a criação de
+APIs RESTful eficientes, eliminando a necessidade de configurações extensivas,
+tornando o desenvolvimento do sistema ágil e produtivo (WALLS, 2022).
+
+Para a elaboração da interface e exibição das informações ao usuário final será
+escolhido o React JS, uma biblioteca JavaScript de código aberto, possuindo uma
+arquitetura baseada em componentes, permitindo a criação de interfaces modulares, o
+que torna o desenvolvimento dinâmico e eficiente na aplicação frontend (FERNANDES
+et al., 2021).
+Para a persistência de dados, o banco de dados relacional PostgreSQL foi
+escolhido pela sua confiabilidade e escalabilidade, sendo amplamente aplicado em
+soluções empresariais (SILBERSCHATZ; GALVIN; GAGNE, 2020).
+Outras tecnologias incluem o JWT (JSON Web Token), que permite a
+autenticação segura dos usuários ao sistema e o Postman, uma aplicação que permite
+testar e validar as requisições da API que será desenvolvida.
+Tabela 1 – Ferramentas a serem utilizadas e suas finalidades
+
+Fonte: Elaborado pelo autor.
+
+3.2​DESENVOLVIMENTO DO SISTEMA
+A arquitetura do sistema segue um modelo em camadas, separando a lógica do
+sistema da interface do usuário e do banco de dados, permitindo escalabilidade e uma
+fácil manutenção (GAMMA et al., 1995). Também será aplicado uma arquitetura
+baseada em microsserviços, garantindo agilidade no desenvolvimento e melhor
+isolamento de falhas.
+O modelo a ser seguido será baseado no modelo incremental, permitindo
+entregas parciais e contínuas de funcionalidades, tornando-se ideal para projetos que
+demandam avaliações constantes e flexibilidade para ajustes, permitindo um rápido
+feedback que alinha aos requisitos funcionais do sistema, além de favorecer uma gestão
+ágil através do Kanban e/ou Scrum (PRESSMAN, 2016).
+Dessa forma, torna-se possível o desenvolvimento do sistema web que garante a
+utilização dos princípios sólidos da engenharia de software, garantindo qualidade,
+funcionalidade e usabilidade do sistema.
+A proposta busca atender moradores de comunidades locais que necessitam de
+serviços gerais, assim como prestadores de serviços que desejam divulgar e qualificar
+seu trabalho para que alcancem novos clientes de maneira prática e acessível, reunindo
+uma oferta e demanda dentro de um ambiente digital seguro. O público também inclui
+usuários com diferentes níveis de conhecimento tecnológico, promovendo uma inclusão
+digital e valorização da economia local.
+
+3.2.1​ LEVANTAMENTO DE REQUISITOS
+Considerando o modelo de desenvolvimento, a fundamentação teórica por trás
+do sistema e análise de trabalhos correlatos, foi realizado o levantamento de requisitos
+funcionais (Tabela 1) e não funcionais (Tabela 2). Com isso, torna-se possível elaborar
+os possíveis casos de uso tanto para o contratante como para o prestador (Figura 4).
+Figura 4 - Casos de Uso
+
+Fonte: Elaborado pelo autor.
+
+Tabela 2 – Requisitos Funcionais
+Código
+
+Descrição
+
+Prioridade
+
+RF01
+
+O sistema deve permitir o cadastro de novos usuários como cliente ou
+prestador.
+
+Obrigatório
+
+RF02
+
+O sistema deve permitir que o usuário faça login com e-mail e senha.
+
+Obrigatório
+
+RF03
+
+O sistema deve permitir que clientes e prestadores editem seus dados
+pessoais.
+O sistema deve permitir que o prestador edite seu perfil profissional
+
+Obrigatório
+
+RF04
+
+(especialidade, descrição e foto).
+
+RF05
+
+O sistema deve validar os dados antes do cadastro, impedindo
+duplicações.
+
+Obrigatório
+
+RF06
+
+O sistema deve permitir que o usuário exclua sua conta.
+
+Obrigatório
+
+RF07
+
+O sistema deve exibir uma lista de categorias de serviços.
+
+Obrigatório
+
+RF08
+
+O sistema deve permitir que o cliente visualize os prestadores disponíveis
+por categoria.
+
+Obrigatório
+Obrigatório
+
+RF10
+
+O sistema deve permitir que o cliente visualize detalhes do perfil de um
+prestador.
+O sistema deve enviar notificações dentro da plataforma sobre propostas e
+atualizações.
+
+RF11
+
+O sistema deve permitir que o cliente realize o pagamento antecipado com
+retenção do valor.
+
+Opcional
+
+RF12
+
+O sistema deve permitir que o cliente avalie o prestador após a conclusão
+do serviço.
+
+Opcional
+
+RF13
+
+O sistema deve exibir a média de avaliação no card do prestador.
+
+Opcional
+
+RF14
+
+O sistema deve permitir que o prestador avalie o cliente após o serviço.
+
+Desejável
+
+RF15
+
+O sistema deve permitir que administradores gerenciem usuários e
+serviços.
+O sistema deve gerar relatórios sobre serviços solicitados, valores
+movimentados e avaliações.
+
+Desejável
+
+RF17
+
+O sistema deve exibir preferencialmente serviços próximos ao cliente
+baseando-se em sua geolocalização.
+
+Desejável
+
+RF18
+
+O sistema deve considerar o “nível de confiança” do prestador de
+serviços baseando-se em critérios como tempo de criação da conta e
+serviços prestados desde o cadastro.
+
+Desejável
+
+RF09
+
+RF16
+
+Fonte: Elaborado pelo autor.
+
+Tabela 3 – Requisitos não funcionais
+Código
+
+Descrição
+
+RNF01
+
+O sistema deve apresentar interface responsiva para diferentes dispositivos.
+
+RNF02
+
+O sistema deve ser acessível a usuários com diferentes níveis de letramento
+digital.
+
+Obrigatório
+
+Obrigatório
+
+Opcional
+
+RNF03
+
+O sistema deve seguir as diretrizes básicas de usabilidade.
+
+RNF04
+
+O sistema deve armazenar senhas de forma criptografada.
+
+RNF05
+
+As mensagens e feedbacks do sistema devem ser exibidas em linguagem clara e
+acessível.
+
+RNF06
+
+O sistema deve utilizar logs para registro de atividades críticas e falhas.
+
+Com os requisitos funcionais levantados, é possível dessa forma elaborar um
+diagrama de classes que estruture a forma como o sistema deve operar (Figura 5).
+Figura 5 - Diagrama de classe
+
+Fonte: elaborado pelo autor.
+
+3.2.2​ ARQUITETURA DO SISTEMA
+O diagrama a seguir ilustra a estrutura geral do sistema (Figura 6) , destacando a
+interação entre o front-end e back-end baseando-se nas tecnologias apresentadas e os
+requisitos levantados anteriormente.
+Figura 6 - Arquitetura do Sistema
+
+Fonte: elaborado pelo autor.
+
+3.2.3​ PROTÓTIPO DE INTERFACES
+A partir dos demais diagramas elaborados ao decorrer do texto, torna-se possível
+criar protótipos do que seria a interface de acesso ao usuário ao sistema. Vale ressaltar
+que as imagens e nomes contidas dentro das interfaces são temporárias e fictícias, e
+apenas servem de exemplo para posteriormente serem implementadas na versão final
+com a posição correta e representação devida do contexto do serviço.
+Ao acessar o sistema, seria necessário uma tela inicial que apresenta o sistema
+ao usuário e exemplos de prestadores de serviços disponíveis para atrair potenciais
+autônomos ou contratantes (Figura 7).
+Figura 7 - Protótipo da tela inicial do TrampoAqui
+
+Fonte: Elaborado pelo autor.
+
+Leva-se em consideração também que com a necessidade de autenticação do
+sistema, será também necessário uma página própria que unifique tanto o processo de
+login como de registro do contratante ou autônomo (Figura 8).
+Figura 8 - Página de autenticação do sistema
+
+Fonte: Elaborado pelo autor.
+
+Caso o usuário tenha interesse em explorar os serviços seja antes ou depois de
+autenticado ao sistema, é possível acessar a listagem dos mesmos, podendo filtrar
+pela categoria que deseja, avaliações ou preço (Figura 9).
+Figura 9 - Página de listagem dos serviços disponíveis
+
+Fonte: Elaborado pelo autor.
+
+Selecionado um serviço, seria necessário apresentar ao usuário detalhes
+descritos pelo contratante a respeito, além da possibilidade de entrar em contato com o
+autônomo caso tenha interesse em contratar os serviços do mesmo (Figura 10).
+Figura 10 - Página com detalhes de um serviço selecionado
+
+Fonte: Elaborado pelo autor.
+
+Por fim, o usuário também pode acessar o perfil dos contratantes caso precise
+de mais detalhes, informações de contato ou todos os serviços que disponibiliza
+(Figura 11).
+
+Figura 11 - Página de perfil do prestador de serviços
+
+Fonte: Elaborado pelo autor.
+
+4​RESULTADOS ESPERADOS
+Espera-se que o projeto proporcione uma experiência de usuário aprimorada,
+garantindo usabilidade e acessibilidade, permitindo assim maior confiabilidade na
+escolha dos prestadores de serviços, reduzindo problemas comuns a comunidades
+menores em plataformas semelhantes, contribuindo para o desenvolvimento econômico
+local, reduzindo a desigualdade no acesso às oportunidades de trabalho e possibilitando
+que profissionais com pouca visibilidade no mercado possam divulgar seus serviços de
+maneira digital.
+5​CRONOGRAMA
+
+Tabela 4 – Cronograma proposto para continuidade da pesquisa
+Atividades ↓ \ Mês →
+Escolha do tema / levantamento teórico
+Levantamento sobre instrumentos de coleta
+Elaboração da versão inicial do projeto
+
+Fev
+
+Mar
+
+✓
+
+✓
+✓
+
+Abr
+
+Maio
+
+Jun
+
+✓
+✓
+
+✓
+
+Resultados esperados
+
+✓
+
+✓
+
+Revisão de literatura
+
+✓
+
+✓
+
+Revisão do artigo
+
+✓
+
+Versão final / correção
+
+✓
+
+Fonte: Elaborado pelo autor.
+
+REFERÊNCIAS
+ALVARELI, Luciani Vieira Gomes; TOBIAS, Eurídice da Conceição; MORAIS,
+Leônidas Magno de. Modelo para o Projeto de TG (Trabalho de Graduação) da Fatec
+Cruzeiro – Professor Waldomiro May. Cruzeiro: Centro Paula Souza, 2017. Disponível
+em: http://www.fateccruzeiro.edu.br/downloads/projetos/artigo2017.doc. Acesso em: 20
+mar. 2025.
+CASTELLS, Manuel. A sociedade em rede. 3. ed. São Paulo: Paz e Terra, 2018.
+FERNANDES, M. C. et al. Desenvolvimento web com React: estudo de caso em aplicações
+interativas. Revista de Tecnologias Digitais, v. 10, n. 2, p. 45–60, 2021.
+GAMMA, E. et al. Design patterns: elements of reusable object-oriented software.
+Boston: Addison-Wesley, 1995.
+GENTIL, Matheus Medeiros; ESQUIVEL, Sarah Izabel Pfaffenzeller. Sistema Web para
+Contratação de Serviços. 2019. Trabalho de Conclusão de Curso (Bacharelado em
+Sistemas de Informação) – Universidade Federal de Santa Catarina, Florianópolis, 2019.
+Disponível em: https://repositorioslatinoamericanos.uchile.cl/handle/2250/5330769.
+Acesso em: 7 abr. 2025.
+MARTIN, Robert C. Clean architecture: a craftsman’s guide to software structure and design.
+Pearson, 2018.
+NEWMAN, S. Building microservices: designing fine-grained systems. 2. ed. O'Reilly Media,
+2022.
+NIELSEN, Jakob. Usability engineering. San Francisco: Morgan Kaufmann, 2012.
+
+O’REILLY, Tim. What is Web 2.0: design patterns and business models for the next
+generation of software. 2005. Disponível em:
+https://www.oreilly.com/pub/a/web2/archive/what-is-web-20.html. Acesso em: 20 mar.
+2025.
+PRESSMAN, Roger S. Engenharia de software: uma abordagem profissional. 7. ed. São
+Paulo: McGraw Hill, 2016.
+SEBRAE. Guia do microempreendedor individual. Brasília: Sebrae Nacional, 2020.
+SILBERSCHATZ, A.; GALVIN, P. B.; GAGNE, G. Sistemas de banco de dados. 7. ed.
+Rio de Janeiro: LTC, 2020.
+SOMMERVILLE, Ian. Software engineering. 10. ed. Boston: Pearson, 2019.
+SOUZA, J.; SILVA, M. Desenvolvimento do Home Easy: sistema de solicitações de serviços.
+Revista de Tecnologia e Inovação, v. 5, n. 2, p. 35–48, 2022.
+TANENBAUM, A. S.; WETHERALL, D. Redes de computadores. 5. ed. São Paulo: Pearson,
+2016.
+WALLS, C. Spring Boot in action. Shelter Island: Manning Publications, 2022.
+
+
