@@ -35,6 +35,7 @@ export interface IStorage {
   
   // Service Provider operations
   getServiceProvider(id: string): Promise<ServiceProvider | undefined>;
+  getServiceProviderWithDetails(id: string): Promise<(ServiceProvider & { user: User; category: ServiceCategory; averageRating: number; reviewCount: number }) | undefined>;
   getServiceProviderByUserId(userId: string): Promise<ServiceProvider | undefined>;
   getServiceProvidersByCategory(categoryId: string): Promise<(ServiceProvider & { user: User; category: ServiceCategory; averageRating: number; reviewCount: number })[]>;
   getAllServiceProviders(): Promise<(ServiceProvider & { user: User; category: ServiceCategory; averageRating: number; reviewCount: number })[]>;
@@ -114,6 +115,36 @@ export class DatabaseStorage implements IStorage {
   async getServiceProvider(id: string): Promise<ServiceProvider | undefined> {
     const [provider] = await db.select().from(serviceProviders).where(eq(serviceProviders.id, id));
     return provider || undefined;
+  }
+
+  async getServiceProviderWithDetails(id: string): Promise<(ServiceProvider & { user: User; category: ServiceCategory; averageRating: number; reviewCount: number }) | undefined> {
+    const result = await db
+      .select({
+        provider: serviceProviders,
+        user: users,
+        category: serviceCategories,
+        averageRating: avg(reviews.rating),
+        reviewCount: count(reviews.id),
+      })
+      .from(serviceProviders)
+      .leftJoin(users, eq(serviceProviders.userId, users.id))
+      .leftJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
+      .leftJoin(reviews, eq(reviews.revieweeId, users.id))
+      .where(eq(serviceProviders.id, id))
+      .groupBy(serviceProviders.id, users.id, serviceCategories.id);
+
+    if (!result.length || !result[0].provider || !result[0].user || !result[0].category) {
+      return undefined;
+    }
+
+    const row = result[0];
+    return {
+      ...row.provider,
+      user: row.user,
+      category: row.category,
+      averageRating: parseFloat(String(row.averageRating || "0")),
+      reviewCount: parseInt(String(row.reviewCount || "0")),
+    };
   }
 
   async getServiceProviderByUserId(userId: string): Promise<ServiceProvider | undefined> {
