@@ -41,7 +41,7 @@ export default function ProviderProfile() {
   const providerId = params.id;
 
   const user = authManager.getUser();
-  const isClient = user?.userType === 'client';
+  const isClient = !!user; // Any authenticated user can request services
 
   const { data: provider, isLoading } = useQuery<ProviderWithDetails>({
     queryKey: ["/api/providers", providerId],
