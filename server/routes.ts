@@ -210,8 +210,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/providers", authenticateToken, async (req: Request, res: Response) => {
     try {
-      if (req.user.userType !== 'provider') {
-        return res.status(403).json({ message: "Only providers can create provider profiles" });
+      if (!req.user?.isProviderEnabled) {
+        return res.status(403).json({ message: "Provider capability must be enabled first" });
       }
 
       const providerData = insertServiceProviderSchema.parse({
@@ -233,7 +233,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Provider not found" });
       }
 
-      if (provider.userId !== req.user.userId) {
+      if (provider.userId !== req.user!.userId) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -247,17 +247,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Service requests
   app.get("/api/requests", authenticateToken, async (req: Request, res: Response) => {
     try {
-      let requests;
-      if (req.user.userType === 'client') {
-        requests = await storage.getServiceRequestsByClient(req.user.userId);
-      } else {
-        // For providers, get requests for their provider profile
-        const provider = await storage.getServiceProviderByUserId(req.user.userId);
-        if (!provider) {
-          return res.status(404).json({ message: "Provider profile not found" });
-        }
-        requests = await storage.getServiceRequestsByProvider(provider.id);
-      }
+      // Get service requests for the current user as a client
+      const requests = await storage.getServiceRequestsByClient(req.user!.userId);
       
       res.json(requests);
     } catch (error) {
@@ -267,13 +258,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/requests", authenticateToken, async (req: Request, res: Response) => {
     try {
-      if (req.user.userType !== 'client') {
-        return res.status(403).json({ message: "Only clients can create service requests" });
-      }
-
       const requestData = insertServiceRequestSchema.parse({
         ...req.body,
-        clientId: req.user.userId,
+        clientId: req.user!.userId,
       });
       
       const request = await storage.createServiceRequest(requestData);
@@ -291,15 +278,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user has permission to update this request
-      if (req.user.userType === 'client' && request.clientId !== req.user.userId) {
+      if (request.clientId !== req.user!.userId) {
         return res.status(403).json({ message: "Unauthorized" });
-      }
-
-      if (req.user.userType === 'provider') {
-        const provider = await storage.getServiceProviderByUserId(req.user.userId);
-        if (!provider || request.providerId !== provider.id) {
-          return res.status(403).json({ message: "Unauthorized" });
-        }
       }
 
       const updatedRequest = await storage.updateServiceRequest(req.params.id, req.body);
@@ -314,7 +294,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const reviewData = insertReviewSchema.parse({
         ...req.body,
-        reviewerId: req.user.userId,
+        reviewerId: req.user!.userId,
       });
       
       const review = await storage.createReview(reviewData);
@@ -327,7 +307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Messages
   app.get("/api/messages/conversation/:userId", authenticateToken, async (req: Request, res: Response) => {
     try {
-      const messages = await storage.getConversation(req.user.userId, req.params.userId);
+      const messages = await storage.getConversation(req.user!.userId, req.params.userId);
       res.json(messages);
     } catch (error) {
       res.status(500).json({ message: "Server error" });
@@ -338,7 +318,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const messageData = insertMessageSchema.parse({
         ...req.body,
-        senderId: req.user.userId,
+        senderId: req.user!.userId,
       });
       
       const message = await storage.createMessage(messageData);
