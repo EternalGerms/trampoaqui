@@ -66,14 +66,11 @@ export default function ProviderDashboard() {
     return null;
   }
 
-  const { data: provider, isLoading: providerLoading } = useQuery<ProviderWithDetails | undefined>({
+  const { data: allProviders } = useQuery<ProviderWithDetails[]>({
     queryKey: ["/api/providers"],
-    queryFn: async () => {
-      const response = await fetch('/api/providers');
-      const providers: ProviderWithDetails[] = await response.json();
-      return providers.find(p => p.userId === user.id);
-    }
   });
+
+  const provider = allProviders?.find(p => p.userId === user.id);
 
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/categories"],
@@ -250,34 +247,47 @@ export default function ProviderDashboard() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center mb-4">
-                    <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mr-4">
-                      <i className={`${provider.category.icon} text-primary-600 text-xl`}></i>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-900">{provider.user.name}</p>
-                      <p className="text-primary-600 text-sm">{provider.category.name}</p>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Avaliação:</span>
-                      <div className="flex items-center">
-                        <Star className="w-4 h-4 text-yellow-400 fill-current mr-1" />
-                        <span className="font-medium">
-                          {provider.averageRating > 0 ? provider.averageRating.toFixed(1) : "N/A"}
-                        </span>
+                  {provider ? (
+                    <>
+                      <div className="flex items-center mb-4">
+                        <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mr-4">
+                          <i className={`${provider.category?.icon || 'fas fa-user'} text-primary-600 text-xl`}></i>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">{provider.user?.name}</p>
+                          <p className="text-primary-600 text-sm">{provider.category?.name}</p>
+                        </div>
                       </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Avaliação:</span>
+                          <div className="flex items-center">
+                            <Star className="w-4 h-4 text-yellow-400 fill-current mr-1" />
+                            <span className="font-medium">
+                              {provider.averageRating > 0 ? provider.averageRating.toFixed(1) : "N/A"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Serviços realizados:</span>
+                          <span className="font-medium">{completedServices}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Ganhos este mês:</span>
+                          <span className="font-medium text-green-600">R$ {monthlyEarnings.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-6">
+                      <User className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-600 mb-4">Complete seu perfil para começar</p>
+                      <Button onClick={() => setLocation('/complete-profile')} size="sm">
+                        <Edit className="w-4 h-4 mr-2" />
+                        Completar Perfil
+                      </Button>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Serviços realizados:</span>
-                      <span className="font-medium">{completedServices}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Ganhos este mês:</span>
-                      <span className="font-medium text-green-600">R$ {monthlyEarnings.toFixed(2)}</span>
-                    </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
 
