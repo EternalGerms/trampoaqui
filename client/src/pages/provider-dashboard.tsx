@@ -61,15 +61,17 @@ export default function ProviderDashboard() {
   const user = authManager.getUser();
 
   // Redirect if not a provider
-  if (!user || user.userType !== 'provider') {
+  if (!user || !user.isProviderEnabled) {
     setLocation('/');
     return null;
   }
 
-  const { data: provider, isLoading: providerLoading } = useQuery<ProviderWithDetails>({
+  const { data: provider, isLoading: providerLoading } = useQuery<ProviderWithDetails | undefined>({
     queryKey: ["/api/providers"],
-    select: (data: ProviderWithDetails[]) => {
-      return data.find(p => p.userId === user.id);
+    queryFn: async () => {
+      const response = await fetch('/api/providers');
+      const providers: ProviderWithDetails[] = await response.json();
+      return providers.find(p => p.userId === user.id);
     }
   });
 
@@ -588,7 +590,8 @@ export default function ProviderDashboard() {
                             <Textarea 
                               placeholder="Descreva sua experiência profissional..."
                               rows={3}
-                              {...field} 
+                              {...field}
+                              value={field.value || ''} 
                             />
                           </FormControl>
                           <FormMessage />
