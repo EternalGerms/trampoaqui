@@ -7,6 +7,7 @@ import Home from "@/pages/home";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Services from "@/pages/services";
+import Dashboard from "@/pages/dashboard";
 import ProviderProfile from "@/pages/provider-profile";
 import ProviderDashboard from "@/pages/provider-dashboard";
 import NotFound from "@/pages/not-found";
@@ -18,8 +19,9 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/services" component={Services} />
+      <Route path="/dashboard" component={Dashboard} />
       <Route path="/provider/:id" component={ProviderProfile} />
-      <Route path="/dashboard" component={ProviderDashboard} />
+      <Route path="/provider-dashboard" component={ProviderDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

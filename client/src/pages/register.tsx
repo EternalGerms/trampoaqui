@@ -9,8 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
+
 import { Link } from "wouter";
 
 const registerSchema = z.object({
@@ -18,9 +17,6 @@ const registerSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
   phone: z.string().optional(),
-  userType: z.enum(["client", "provider"], {
-    required_error: "Selecione um tipo de usuário",
-  }),
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;
@@ -30,10 +26,6 @@ export default function Register() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  // Get type from URL params
-  const urlParams = new URLSearchParams(window.location.search);
-  const defaultType = urlParams.get('type') === 'provider' ? 'provider' : 'client';
-
   const form = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -41,7 +33,6 @@ export default function Register() {
       email: "",
       password: "",
       phone: "",
-      userType: defaultType,
     },
   });
 
@@ -82,33 +73,6 @@ export default function Register() {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="userType"
-                render={({ field }) => (
-                  <FormItem className="space-y-3">
-                    <FormLabel>Tipo de conta</FormLabel>
-                    <FormControl>
-                      <RadioGroup
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                        className="flex flex-col space-y-2"
-                      >
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="client" id="client" />
-                          <Label htmlFor="client">Cliente - Busco profissionais</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="provider" id="provider" />
-                          <Label htmlFor="provider">Profissional - Ofereço serviços</Label>
-                        </div>
-                      </RadioGroup>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
               <FormField
                 control={form.control}
                 name="name"

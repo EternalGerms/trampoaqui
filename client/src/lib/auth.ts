@@ -4,7 +4,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  userType: 'client' | 'provider';
+  isProviderEnabled: boolean;
 }
 
 export interface AuthResponse {
@@ -30,7 +30,7 @@ class AuthManager {
     return data;
   }
 
-  async register(userData: { email: string; password: string; name: string; phone?: string; userType: 'client' | 'provider' }): Promise<AuthResponse> {
+  async register(userData: { email: string; password: string; name: string; phone?: string; }): Promise<AuthResponse> {
     const response = await apiRequest('POST', '/api/auth/register', userData);
     const data = await response.json();
     
@@ -80,7 +80,7 @@ class AuthManager {
     return !!this.token;
   }
 
-  private setAuth(token: string, user: User): void {
+  setAuth(token: string, user: User): void {
     this.token = token;
     this.user = user;
     localStorage.setItem('token', token);

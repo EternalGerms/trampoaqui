@@ -8,6 +8,22 @@ TrampoAqui is a community-focused web platform that connects service providers w
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (January 30, 2025)
+
+### Unified Account System Implementation
+- **Database Schema**: Migrated from `userType` enum to `isProviderEnabled` boolean field
+- **Registration Flow**: Removed provider/client choice during signup - all users start as clients
+- **Provider Enablement**: Added ability to enable provider capabilities from unified dashboard
+- **Authentication**: Updated JWT tokens to include `isProviderEnabled` instead of `userType`
+- **New Dashboard**: Created `/dashboard` route with tabs for client requests and provider enablement
+- **API Endpoints**: Added `/api/auth/enable-provider` endpoint for upgrading accounts
+
+### Architecture Changes
+- All users now start with `isProviderEnabled: false`
+- Users can enable provider capabilities through dashboard interface
+- Single account can be both client and provider
+- Provider dashboard accessible only after enabling provider capabilities
+
 ## System Architecture
 
 ### Frontend Architecture
