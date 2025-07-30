@@ -13,7 +13,7 @@ declare global {
     interface Request {
       user?: {
         userId: string;
-        userType: 'client' | 'provider';
+        isProviderEnabled: boolean;
       };
     }
   }
@@ -81,7 +81,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Generate JWT token
-      const token = jwt.sign({ userId: user.id, userType: user.userType }, JWT_SECRET);
+      const token = jwt.sign({ userId: user.id, isProviderEnabled: user.isProviderEnabled }, JWT_SECRET);
       
       res.json({ 
         token, 
@@ -89,7 +89,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: user.id, 
           email: user.email, 
           name: user.name, 
-          userType: user.userType 
+          isProviderEnabled: user.isProviderEnabled 
         } 
       });
     } catch (error) {
@@ -111,7 +111,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
-      const token = jwt.sign({ userId: user.id, userType: user.userType }, JWT_SECRET);
+      const token = jwt.sign({ userId: user.id, isProviderEnabled: user.isProviderEnabled }, JWT_SECRET);
       
       res.json({ 
         token, 
@@ -119,7 +119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: user.id, 
           email: user.email, 
           name: user.name, 
-          userType: user.userType 
+          isProviderEnabled: user.isProviderEnabled 
         } 
       });
     } catch (error) {
@@ -130,7 +130,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get current user
   app.get("/api/auth/me", authenticateToken, async (req: Request, res: Response) => {
     try {
-      const user = await storage.getUser(req.user.userId);
+      const user = await storage.getUser(req.user!.userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -139,7 +139,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: user.id, 
         email: user.email, 
         name: user.name, 
-        userType: user.userType 
+        isProviderEnabled: user.isProviderEnabled 
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Enable provider capability
+  app.post("/api/auth/enable-provider", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const user = await storage.enableProviderCapability(req.user!.userId);
+      
+      // Generate new token with updated provider status
+      const token = jwt.sign({ userId: user.id, isProviderEnabled: user.isProviderEnabled }, JWT_SECRET);
+      
+      res.json({ 
+        token,
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          name: user.name, 
+          isProviderEnabled: user.isProviderEnabled 
+        } 
       });
     } catch (error) {
       res.status(500).json({ message: "Server error" });

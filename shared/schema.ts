@@ -10,7 +10,7 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   name: text("name").notNull(),
   phone: text("phone"),
-  userType: text("user_type").notNull(), // 'client' or 'provider'
+  isProviderEnabled: boolean("is_provider_enabled").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -145,6 +145,7 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
+  isProviderEnabled: true, // This will be handled separately
 });
 
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({
