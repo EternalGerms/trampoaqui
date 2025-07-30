@@ -244,6 +244,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/providers/:id", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const provider = await storage.getServiceProvider(req.params.id);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      if (provider.userId !== req.user!.userId) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      await storage.deleteServiceProvider(req.params.id);
+      res.json({ message: "Provider deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Messages
+  app.post("/api/messages", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const { content, receiverId, requestId } = req.body;
+      
+      if (!content || !receiverId) {
+        return res.status(400).json({ message: "Content and receiverId are required" });
+      }
+
+      const message = await storage.createMessage({
+        senderId: req.user!.userId,
+        receiverId,
+        requestId: requestId || null,
+        content,
+        isRead: false,
+      });
+      
+      res.json(message);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // Service requests
   app.get("/api/requests", authenticateToken, async (req: Request, res: Response) => {
     try {

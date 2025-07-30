@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Star, MapPin, Phone, Mail, MessageCircle, Calendar } from "lucide-react";
+import { Star, MapPin, Phone, Mail, MessageCircle, Calendar, Edit } from "lucide-react";
 import { authManager, authenticatedRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -22,9 +22,15 @@ const requestSchema = z.object({
   description: z.string().min(10, "Descrição deve ter pelo menos 10 caracteres"),
   proposedPrice: z.string().optional(),
   scheduledDate: z.string().optional(),
+  scheduledTime: z.string().optional(),
+});
+
+const messageSchema = z.object({
+  content: z.string().min(1, "Mensagem não pode estar vazia"),
 });
 
 type RequestForm = z.infer<typeof requestSchema>;
+type MessageForm = z.infer<typeof messageSchema>;
 
 type ProviderWithDetails = ServiceProvider & { 
   user: User; 
@@ -38,10 +44,13 @@ export default function ProviderProfile() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [showRequestForm, setShowRequestForm] = useState(false);
+  const [showMessageForm, setShowMessageForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
   const providerId = params.id;
 
   const user = authManager.getUser();
   const isClient = !!user; // Any authenticated user can request services
+  const isOwner = user && provider && user.id === provider.userId; // Check if current user owns this service
 
   const { data: provider, isLoading } = useQuery<ProviderWithDetails>({
     queryKey: ["/api/providers", providerId],
@@ -55,6 +64,7 @@ export default function ProviderProfile() {
       description: "",
       proposedPrice: "",
       scheduledDate: "",
+      scheduledTime: "",
     },
   });
 
@@ -64,7 +74,9 @@ export default function ProviderProfile() {
         ...data,
         providerId,
         proposedPrice: data.proposedPrice ? parseFloat(data.proposedPrice) : undefined,
-        scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : undefined,
+        scheduledDate: data.scheduledDate && data.scheduledTime ? 
+          new Date(`${data.scheduledDate}T${data.scheduledTime}:00`) : 
+          data.scheduledDate ? new Date(data.scheduledDate) : undefined,
       });
       return response.json();
     },
@@ -123,8 +135,65 @@ export default function ProviderProfile() {
     );
   }
 
+  const messageForm = useForm<MessageForm>({
+    resolver: zodResolver(messageSchema),
+    defaultValues: {
+      content: "",
+    },
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: async (data: MessageForm) => {
+      const response = await authenticatedRequest('POST', '/api/messages', {
+        content: data.content,
+        receiverId: provider?.userId,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Mensagem enviada!",
+        description: "O prestador receberá sua mensagem.",
+      });
+      setShowMessageForm(false);
+      messageForm.reset();
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao enviar mensagem",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteProviderMutation = useMutation({
+    mutationFn: async () => {
+      const response = await authenticatedRequest('DELETE', `/api/providers/${providerId}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Serviço excluído!",
+        description: "Seu anúncio foi removido da plataforma.",
+      });
+      setLocation('/services');
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao excluir serviço",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (data: RequestForm) => {
     createRequestMutation.mutate(data);
+  };
+
+  const onMessageSubmit = (data: MessageForm) => {
+    sendMessageMutation.mutate(data);
   };
 
   return (
@@ -203,7 +272,30 @@ export default function ProviderProfile() {
                   </div>
                 )}
                 
-                {isClient && (
+                {isOwner ? (
+                  <div className="space-y-3 pt-4 border-t">
+                    <Button 
+                      onClick={() => setShowEditForm(true)}
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Edit className="w-4 h-4 mr-2" />
+                      Editar Serviço
+                    </Button>
+                    
+                    <Button 
+                      variant="destructive" 
+                      className="w-full"
+                      onClick={() => {
+                        if (confirm('Tem certeza que deseja excluir este serviço? Esta ação não pode ser desfeita.')) {
+                          deleteProviderMutation.mutate();
+                        }
+                      }}
+                      disabled={deleteProviderMutation.isPending}
+                    >
+                      {deleteProviderMutation.isPending ? "Excluindo..." : "Excluir Serviço"}
+                    </Button>
+                  </div>
+                ) : isClient && !isOwner ? (
                   <div className="space-y-3 pt-4 border-t">
                     <Button 
                       onClick={() => setShowRequestForm(true)}
@@ -213,12 +305,16 @@ export default function ProviderProfile() {
                       Solicitar Serviço
                     </Button>
                     
-                    <Button variant="outline" className="w-full">
+                    <Button 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={() => setShowMessageForm(true)}
+                    >
                       <MessageCircle className="w-4 h-4 mr-2" />
                       Enviar Mensagem
                     </Button>
                   </div>
-                )}
+                ) : null}
                 
                 {!user && (
                   <div className="pt-4 border-t">
@@ -299,22 +395,41 @@ export default function ProviderProfile() {
                       )}
                     />
                     
-                    <FormField
-                      control={form.control}
-                      name="scheduledDate"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Data preferencial (opcional)</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="datetime-local" 
-                              {...field} 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        control={form.control}
+                        name="scheduledDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Data preferencial</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="date" 
+                                {...field} 
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="scheduledTime"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Horário (24h)</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="time" 
+                                {...field} 
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                     
                     <div className="flex gap-3">
                       <Button
@@ -331,6 +446,58 @@ export default function ProviderProfile() {
                         className="flex-1 bg-primary-600 hover:bg-primary-700"
                       >
                         {createRequestMutation.isPending ? "Enviando..." : "Enviar"}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Message Form Modal */}
+        {showMessageForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-md">
+              <CardHeader>
+                <CardTitle>Enviar Mensagem</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Form {...messageForm}>
+                  <form onSubmit={messageForm.handleSubmit(onMessageSubmit)} className="space-y-4">
+                    <FormField
+                      control={messageForm.control}
+                      name="content"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Sua mensagem</FormLabel>
+                          <FormControl>
+                            <Textarea 
+                              placeholder="Digite sua mensagem..." 
+                              rows={4}
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <div className="flex gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowMessageForm(false)}
+                        className="flex-1"
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={sendMessageMutation.isPending}
+                        className="flex-1 bg-primary-600 hover:bg-primary-700"
+                      >
+                        {sendMessageMutation.isPending ? "Enviando..." : "Enviar"}
                       </Button>
                     </div>
                   </form>
