@@ -41,6 +41,7 @@ export interface IStorage {
   getAllServiceProviders(): Promise<(ServiceProvider & { user: User; category: ServiceCategory; averageRating: number; reviewCount: number })[]>;
   createServiceProvider(provider: InsertServiceProvider): Promise<ServiceProvider>;
   updateServiceProvider(id: string, provider: Partial<InsertServiceProvider>): Promise<ServiceProvider>;
+  deleteServiceProvider(id: string): Promise<void>;
   
   // Service Request operations
   getServiceRequest(id: string): Promise<ServiceRequest | undefined>;
@@ -216,6 +217,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(serviceProviders.id, id))
       .returning();
     return updatedProvider;
+  }
+
+  async deleteServiceProvider(id: string): Promise<void> {
+    await db.delete(serviceProviders).where(eq(serviceProviders.id, id));
   }
 
   async getServiceRequest(id: string): Promise<ServiceRequest | undefined> {
