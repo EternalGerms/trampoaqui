@@ -198,7 +198,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/providers/:id", async (req: Request, res: Response) => {
     try {
-      const provider = await storage.getServiceProvider(req.params.id);
+      const provider = await storage.getServiceProviderWithDetails(req.params.id);
       if (!provider) {
         return res.status(404).json({ message: "Provider not found" });
       }
