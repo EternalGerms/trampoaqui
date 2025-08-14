@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: trampoaqui-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trampoaqui
+      POSTGRES_PASSWORD: trampoaqui123
+      POSTGRES_DB: trampoaqui
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    networks:
+      - trampoaqui-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trampoaqui -d trampoaqui"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trampoaqui-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://trampoaqui:trampoaqui123@postgres:5432/trampoaqui
+      JWT_SECRET: your-super-secret-jwt-key-change-this-in-production
+      PORT: 5000
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - trampoaqui-network
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Development service (opcional, para desenvolvimento)
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: trampoaqui-dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://trampoaqui:trampoaqui123@postgres:5432/trampoaqui
+      JWT_SECRET: dev-secret-key
+      PORT: 5000
+    ports:
+      - "3000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - trampoaqui-network
+    volumes:
+      - .:/app
+      - /app/node_modules
+    profiles:
+      - dev
+
+networks:
+  trampoaqui-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

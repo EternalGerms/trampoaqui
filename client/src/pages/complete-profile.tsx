@@ -1,30 +1,26 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, User, MapPin, Star, Clock, DollarSign } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Loader2, User, Star, Heart, Briefcase } from "lucide-react";
 import { authManager } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { 
-  ServiceCategory, 
-  insertServiceProviderSchema,
-  type ServiceProvider
-} from "@shared/schema";
+import { updateProviderProfileSchema } from "@shared/schema";
 
-const profileSchema = insertServiceProviderSchema.omit({ userId: true });
-type ProfileForm = z.infer<typeof profileSchema>;
+type ProfileForm = {
+  bio?: string;
+  experience: string;
+  location: string;
+};
 
 export default function CompleteProfile() {
   const [, setLocation] = useLocation();
@@ -37,78 +33,40 @@ export default function CompleteProfile() {
     return null;
   }
 
-  const { data: categories = [], isLoading: categoriesLoading } = useQuery<ServiceCategory[]>({
-    queryKey: ["/api/categories"],
-  });
-
-  const { data: existingProvider } = useQuery<ServiceProvider | undefined>({
-    queryKey: ["/api/providers", "current"],
-    queryFn: async () => {
-      const response = await fetch('/api/providers');
-      const providers: ServiceProvider[] = await response.json();
-      return providers.find((p: ServiceProvider) => p.userId === user.id);
-    },
-  });
-
   const form = useForm<ProfileForm>({
-    resolver: zodResolver(profileSchema),
+    resolver: zodResolver(updateProviderProfileSchema),
     defaultValues: {
-      categoryId: existingProvider?.categoryId || "",
-      description: existingProvider?.description || "",
-      hourlyRate: existingProvider?.hourlyRate || "",
-      experience: existingProvider?.experience || "",
-      location: existingProvider?.location || "",
-      availability: existingProvider?.availability || null,
+      bio: user.bio || "",
+      experience: user.experience || "",
+      location: user.location || "",
     },
   });
 
-  // Update form when existing provider data loads
+  // Update form when user data loads
   useEffect(() => {
-    if (existingProvider) {
+    if (user) {
       form.reset({
-        categoryId: existingProvider.categoryId,
-        description: existingProvider.description,
-        hourlyRate: existingProvider.hourlyRate,
-        experience: existingProvider.experience,
-        location: existingProvider.location,
-        availability: existingProvider.availability,
+        bio: user.bio || "",
+        experience: user.experience || "",
+        location: user.location || "",
       });
     }
-  }, [existingProvider, form]);
+  }, [user, form]);
 
-  const createProviderMutation = useMutation({
+  const updateProfileMutation = useMutation({
     mutationFn: async (data: ProfileForm) => {
-      const response = await apiRequest('POST', '/api/providers', data);
+      const response = await apiRequest('PUT', '/api/auth/profile', data);
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Perfil criado com sucesso!",
-        description: "Você agora pode receber solicitações de serviços.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
-      setLocation('/provider-dashboard');
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Erro ao criar perfil",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateProviderMutation = useMutation({
-    mutationFn: async (data: ProfileForm) => {
-      const response = await apiRequest('PUT', `/api/providers/${existingProvider!.id}`, data);
-      return response.json();
-    },
-    onSuccess: () => {
+    onSuccess: (updatedUser) => {
+      // Update local auth state with new profile data
+      authManager.setAuth(authManager.getToken()!, updatedUser);
+      
       toast({
         title: "Perfil atualizado com sucesso!",
-        description: "Suas informações foram salvas.",
+        description: "Suas informações pessoais foram salvas.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       setLocation('/provider-dashboard');
     },
     onError: (error: Error) => {
@@ -121,14 +79,10 @@ export default function CompleteProfile() {
   });
 
   const onSubmit = (data: ProfileForm) => {
-    if (existingProvider) {
-      updateProviderMutation.mutate(data);
-    } else {
-      createProviderMutation.mutate(data);
-    }
+    updateProfileMutation.mutate(data);
   };
 
-  const isLoading = createProviderMutation.isPending || updateProviderMutation.isPending;
+  const isLoading = updateProfileMutation.isPending;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -138,62 +92,33 @@ export default function CompleteProfile() {
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              {existingProvider ? 'Editar Perfil' : 'Complete seu Perfil de Prestador'}
+              Complete seu Perfil de Prestador
             </h1>
             <p className="text-gray-600">
-              {existingProvider 
-                ? 'Atualize suas informações para melhor atender seus clientes'
-                : 'Preencha as informações para começar a receber solicitações de serviços'
-              }
+              Preencha suas informações pessoais e profissionais para que os clientes possam conhecer você melhor
             </p>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5" />
-                Informações Profissionais
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                  {/* Category Selection */}
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              {/* About Me Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Heart className="w-5 h-5 text-blue-600" />
+                    Sobre Mim
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
                   <FormField
                     control={form.control}
-                    name="categoryId"
+                    name="bio"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Categoria de Serviço *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione sua área de atuação" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {categories.map((category) => (
-                              <SelectItem key={category.id} value={category.id}>
-                                {category.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Description */}
-                  <FormField
-                    control={form.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Descrição dos Serviços *</FormLabel>
+                        <FormLabel>Apresentação Pessoal</FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="Descreva os serviços que você oferece, sua experiência e diferenciais..."
+                            placeholder="Conte um pouco sobre você, sua personalidade, o que te motiva no trabalho..."
                             className="min-h-[100px]"
                             {...field}
                           />
@@ -202,115 +127,93 @@ export default function CompleteProfile() {
                       </FormItem>
                     )}
                   />
+                </CardContent>
+              </Card>
 
-                  {/* Experience */}
+              {/* Professional Experience Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Briefcase className="w-5 h-5 text-green-600" />
+                    Experiência Profissional
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
                   <FormField
                     control={form.control}
                     name="experience"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Experiência *</FormLabel>
+                        <FormLabel>Sua Experiência *</FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="Conte sobre sua experiência, certificações, projetos anteriores..."
-                            className="min-h-[80px]"
+                            placeholder="Descreva sua experiência profissional, certificações, cursos, projetos importantes que já realizou..."
+                            className="min-h-[120px]"
                             {...field}
-                            value={field.value || ''}
                           />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                </CardContent>
+              </Card>
 
-                  {/* Location and Rate */}
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="location"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Localização *</FormLabel>
-                          <FormControl>
-                            <Input 
-                              placeholder="Cidade, Bairro"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="hourlyRate"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Valor por Hora (R$) *</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder="50.00"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  {/* Availability */}
+              {/* Location Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <User className="w-5 h-5 text-purple-600" />
+                    Localização
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
                   <FormField
                     control={form.control}
-                    name="availability"
+                    name="location"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Disponibilidade</FormLabel>
+                        <FormLabel>Onde você atende *</FormLabel>
                         <FormControl>
-                          <Textarea
-                            placeholder="Ex: Segunda a sexta das 8h às 18h, sábados pela manhã..."
+                          <Input 
+                            placeholder="Ex: São Paulo - SP, Região Sul, Bairro Centro"
                             {...field}
-                            value={field.value || ''}
                           />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                </CardContent>
+              </Card>
 
-                  {/* Action Buttons */}
-                  <div className="flex gap-4 pt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setLocation('/dashboard')}
-                      className="flex-1"
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={isLoading}
-                      className="flex-1"
-                    >
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          {existingProvider ? 'Atualizando...' : 'Criando...'}
-                        </>
-                      ) : (
-                        existingProvider ? 'Atualizar Perfil' : 'Criar Perfil'
-                      )}
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
+              {/* Action Buttons */}
+              <div className="flex gap-4 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setLocation('/dashboard')}
+                  className="flex-1"
+                >
+                  Voltar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex-1"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    'Salvar Perfil'
+                  )}
+                </Button>
+              </div>
+            </form>
+          </Form>
 
           {/* Tips Card */}
           <Card className="mt-6">
@@ -320,11 +223,11 @@ export default function CompleteProfile() {
                 Dicas para um perfil atrativo
               </h3>
               <ul className="space-y-2 text-sm text-gray-600">
-                <li>• Seja específico sobre os serviços que oferece</li>
-                <li>• Mencione suas certificações e experiência relevante</li>
-                <li>• Defina um preço justo e competitivo</li>
-                <li>• Seja claro sobre sua disponibilidade</li>
-                <li>• Use uma linguagem profissional e amigável</li>
+                <li>• <strong>Sobre Mim:</strong> Mostre sua personalidade e paixão pelo trabalho</li>
+                <li>• <strong>Experiência:</strong> Mencione certificações, cursos e projetos relevantes</li>
+                <li>• <strong>Localização:</strong> Seja específico sobre onde você atende</li>
+                <li>• Use uma linguagem amigável e profissional</li>
+                <li>• Seja autêntico e mostre seus diferenciais</li>
               </ul>
             </CardContent>
           </Card>

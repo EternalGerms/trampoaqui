@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { insertUserSchema, insertServiceProviderSchema, insertServiceRequestSchema, insertMessageSchema, insertReviewSchema } from "@shared/schema";
+import { insertUserSchema, insertServiceProviderSchema, insertServiceRequestSchema, updateServiceRequestSchema, insertMessageSchema, insertReviewSchema, insertNegotiationSchema, updateProviderProfileSchema } from "@shared/schema";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 
@@ -60,6 +60,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
 
   await seedCategories();
+
+  // Health check endpoint for Docker
+  app.get("/api/health", async (req: Request, res: Response) => {
+    try {
+      // Test database connection
+      await storage.getUser("test"); // Simple test that doesn't require direct db access
+      res.status(200).json({ 
+        status: "healthy", 
+        timestamp: new Date().toISOString(),
+        database: "connected"
+      });
+    } catch (error) {
+      res.status(503).json({ 
+        status: "unhealthy", 
+        timestamp: new Date().toISOString(),
+        database: "disconnected",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+
 
   // Auth routes
   app.post("/api/auth/register", async (req: Request, res: Response) => {
@@ -168,6 +190,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update provider profile (personal info)
+  app.put("/api/auth/profile", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const profileData = updateProviderProfileSchema.parse(req.body);
+      const user = await storage.updateUserProfile(req.user!.userId, profileData);
+      
+      res.json({ 
+        id: user.id, 
+        email: user.email, 
+        name: user.name, 
+        isProviderEnabled: user.isProviderEnabled,
+        bio: user.bio,
+        experience: user.experience,
+        location: user.location
+      });
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      res.status(400).json({ message: "Invalid profile data", details: error instanceof Error ? error.message : "Unknown error" });
+    }
+  });
+
   // Service categories
   app.get("/api/categories", async (req: Request, res: Response) => {
     try {
@@ -219,10 +262,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.user.userId,
       });
       
+      // Check if user already has a service in this category
+      const existingProvider = await storage.getServiceProviderByUserAndCategory(req.user.userId, providerData.categoryId);
+      if (existingProvider) {
+        return res.status(400).json({ 
+          message: "Você já possui um serviço nesta categoria. Edite o existente ou escolha outra categoria." 
+        });
+      }
+      
       const provider = await storage.createServiceProvider(providerData);
       res.json(provider);
     } catch (error) {
-      res.status(400).json({ message: "Invalid input data" });
+      console.error("Error creating provider:", error);
+      res.status(400).json({ message: "Invalid input data", details: error instanceof Error ? error.message : "Unknown error" });
     }
   });
 
@@ -244,6 +296,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.put("/api/providers/:id", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const provider = await storage.getServiceProvider(req.params.id);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      if (provider.userId !== req.user!.userId) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const updateData = insertServiceProviderSchema.omit({ userId: true }).parse(req.body);
+      const updatedProvider = await storage.updateServiceProvider(req.params.id, updateData);
+      res.json(updatedProvider);
+    } catch (error) {
+      console.error("Error updating provider:", error);
+      res.status(400).json({ message: "Invalid input data", details: error instanceof Error ? error.message : "Unknown error" });
+    }
+  });
+
   app.delete("/api/providers/:id", authenticateToken, async (req: Request, res: Response) => {
     try {
       const provider = await storage.getServiceProvider(req.params.id);
@@ -255,10 +327,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
+      // Check for active requests before deletion
+      const activeRequests = await storage.getServiceRequestsByProvider(req.params.id);
+      const hasActiveRequests = activeRequests.some(request => 
+        request.status === 'pending' || request.status === 'accepted' || request.status === 'negotiating'
+      );
+
+      if (hasActiveRequests) {
+        return res.status(400).json({ 
+          message: "Não é possível excluir o serviço com solicitações ativas. Finalize ou cancele as solicitações primeiro." 
+        });
+      }
+
       await storage.deleteServiceProvider(req.params.id);
       res.json({ message: "Provider deleted successfully" });
     } catch (error) {
-      res.status(500).json({ message: "Server error" });
+      console.error("Error deleting provider:", error);
+      res.status(500).json({ message: "Server error", details: error instanceof Error ? error.message : "Unknown error" });
     }
   });
 
@@ -288,8 +373,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Service requests
   app.get("/api/requests", authenticateToken, async (req: Request, res: Response) => {
     try {
-      // Get service requests for the current user as a client
-      const requests = await storage.getServiceRequestsByClient(req.user!.userId);
+      // Get service requests for the current user as a client with negotiations
+      const requests = await storage.getServiceRequestsByClientWithNegotiations(req.user!.userId);
       
       res.json(requests);
     } catch (error) {
@@ -297,17 +382,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/requests/provider", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      console.log("Provider requests route called for user:", req.user!.userId);
+      
+      // Get service requests for the current user as a provider
+      const provider = await storage.getServiceProviderByUserId(req.user!.userId);
+      console.log("Provider found:", provider);
+      
+      if (!provider) {
+        console.log("No provider profile found for user:", req.user!.userId);
+        return res.status(404).json({ message: "Provider profile not found" });
+      }
+      
+      console.log("Looking for requests with providerId:", provider.id);
+      const requests = await storage.getServiceRequestsByProviderWithNegotiations(provider.id);
+      console.log("Requests found:", requests);
+      
+      res.json(requests);
+    } catch (error) {
+      console.error("Error in provider requests route:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.post("/api/requests", authenticateToken, async (req: Request, res: Response) => {
     try {
+      console.log("Received request body:", req.body);
+      console.log("User ID:", req.user!.userId);
+      
       const requestData = insertServiceRequestSchema.parse({
         ...req.body,
         clientId: req.user!.userId,
       });
       
+      console.log("Parsed request data:", requestData);
+      
       const request = await storage.createServiceRequest(requestData);
       res.json(request);
     } catch (error) {
-      res.status(400).json({ message: "Invalid input data" });
+      console.error("Validation error:", error);
+      res.status(400).json({ message: "Invalid input data", details: error instanceof Error ? error.message : "Unknown error" });
     }
   });
 
@@ -318,15 +433,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Request not found" });
       }
 
-      // Check if user has permission to update this request
-      if (request.clientId !== req.user!.userId) {
+      // Get provider for this request
+      const provider = await storage.getServiceProvider(request.providerId);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      // Check if user has permission to update this request (client or provider)
+      if (request.clientId !== req.user!.userId && provider.userId !== req.user!.userId) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
-      const updatedRequest = await storage.updateServiceRequest(req.params.id, req.body);
+      const updateData = updateServiceRequestSchema.parse(req.body);
+      
+      // Handle completion logic
+      if (updateData.status === 'completed') {
+        const now = new Date();
+        const isClient = request.clientId === req.user!.userId;
+        const isProvider = provider.userId === req.user!.userId;
+        
+        if (isClient) {
+          updateData.clientCompletedAt = now;
+        } else if (isProvider) {
+          updateData.providerCompletedAt = now;
+        }
+        
+        // Only mark as completed if both parties have confirmed
+        const hasClientCompleted = request.clientCompletedAt || (isClient ? now : null);
+        const hasProviderCompleted = request.providerCompletedAt || (isProvider ? now : null);
+        
+        if (!hasClientCompleted || !hasProviderCompleted) {
+          // Change status to 'pending_completion' if only one party has confirmed
+          updateData.status = 'pending_completion';
+        }
+      }
+
+      const updatedRequest = await storage.updateServiceRequest(req.params.id, updateData);
       res.json(updatedRequest);
     } catch (error) {
-      res.status(400).json({ message: "Invalid input data" });
+      console.error("Validation error:", error);
+      res.status(400).json({ message: "Invalid input data", details: error instanceof Error ? error.message : "Unknown error" });
     }
   });
 
@@ -345,7 +491,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Messages
+  // Messages routes
   app.get("/api/messages/conversation/:userId", authenticateToken, async (req: Request, res: Response) => {
     try {
       const messages = await storage.getConversation(req.user!.userId, req.params.userId);
@@ -355,17 +501,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/messages", authenticateToken, async (req: Request, res: Response) => {
+  // Get messages received by current user
+  app.get("/api/messages/received", authenticateToken, async (req: Request, res: Response) => {
     try {
-      const messageData = insertMessageSchema.parse({
-        ...req.body,
-        senderId: req.user!.userId,
-      });
-      
-      const message = await storage.createMessage(messageData);
-      res.json(message);
+      const messages = await storage.getReceivedMessages(req.user!.userId);
+      res.json(messages);
     } catch (error) {
-      res.status(400).json({ message: "Invalid input data" });
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Negotiation routes
+  app.post("/api/negotiations", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      // Parse the request body without proposerId since we'll add it
+      const negotiationData = insertNegotiationSchema.omit({ proposerId: true }).parse(req.body);
+      
+      // Add the proposer ID from the authenticated user
+      const negotiation = {
+        ...negotiationData,
+        proposerId: req.user!.userId,
+      };
+      
+      const createdNegotiation = await storage.createNegotiation(negotiation);
+      
+      // Update request status to negotiating if it was pending
+      await storage.updateRequestStatus(negotiation.requestId, 'negotiating');
+      
+      res.json(createdNegotiation);
+    } catch (error) {
+      console.error("Error creating negotiation:", error);
+      res.status(400).json({ message: "Invalid negotiation data" });
+    }
+  });
+
+  app.put("/api/negotiations/:id/status", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const { status } = req.body;
+      
+      if (!['accepted', 'rejected'].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      
+      await storage.updateNegotiationStatus(req.params.id, status);
+      
+      // If accepted, update the request with the accepted negotiation details
+      if (status === 'accepted') {
+        // First get the negotiation by its ID to get the requestId
+        const negotiation = await storage.getNegotiationById(req.params.id);
+        if (negotiation) {
+          await storage.updateServiceRequest(negotiation.requestId, {
+            status: 'accepted',
+            proposedPrice: negotiation.proposedPrice || undefined,
+            proposedHours: negotiation.proposedHours || undefined,
+            proposedDays: negotiation.proposedDays || undefined,
+            scheduledDate: negotiation.proposedDate || undefined,
+            pricingType: negotiation.pricingType,
+          });
+        }
+      }
+      
+      res.json({ message: "Negotiation status updated" });
+    } catch (error) {
+      console.error("Error updating negotiation status:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/requests/:id/negotiations", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const negotiations = await storage.getNegotiationsByRequest(req.params.id);
+      res.json(negotiations);
+    } catch (error) {
+      console.error("Error getting negotiations:", error);
+      res.status(500).json({ message: "Server error" });
     }
   });
 

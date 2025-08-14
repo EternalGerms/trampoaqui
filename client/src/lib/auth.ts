@@ -5,6 +5,9 @@ export interface User {
   email: string;
   name: string;
   isProviderEnabled: boolean;
+  bio?: string;
+  experience?: string;
+  location?: string;
 }
 
 export interface AuthResponse {

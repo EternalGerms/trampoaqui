@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { useForm } from "react-hook-form";
@@ -15,22 +15,49 @@ import { Star, MapPin, Phone, Mail, MessageCircle, Calendar, Edit } from "lucide
 import { authManager, authenticatedRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { ServiceProvider, User, ServiceCategory } from "@shared/schema";
+import { ServiceProvider, User, ServiceCategory, insertServiceProviderSchema } from "@shared/schema";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const requestSchema = z.object({
   title: z.string().min(5, "Título deve ter pelo menos 5 caracteres"),
   description: z.string().min(10, "Descrição deve ter pelo menos 10 caracteres"),
+  pricingType: z.enum(['hourly', 'daily', 'fixed']),
   proposedPrice: z.string().optional(),
+  proposedHours: z.string().optional(),
+  proposedDays: z.string().optional(),
   scheduledDate: z.string().optional(),
   scheduledTime: z.string().optional(),
+}).refine((data) => {
+  if (data.pricingType === 'hourly' && data.proposedHours && parseInt(data.proposedHours) <= 0) {
+    return false;
+  }
+  if (data.pricingType === 'daily' && data.proposedDays && parseInt(data.proposedDays) <= 0) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Quantidade deve ser maior que zero",
+  path: ["proposedHours", "proposedDays"]
+}).refine((data) => {
+  if (data.proposedPrice && parseFloat(data.proposedPrice) <= 0) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Preço deve ser maior que zero",
+  path: ["proposedPrice"]
 });
 
 const messageSchema = z.object({
   content: z.string().min(1, "Mensagem não pode estar vazia"),
 });
 
+const editProviderSchema = insertServiceProviderSchema.omit({ userId: true });
+
 type RequestForm = z.infer<typeof requestSchema>;
 type MessageForm = z.infer<typeof messageSchema>;
+type EditProviderForm = z.infer<typeof editProviderSchema>;
 
 type ProviderWithDetails = ServiceProvider & { 
   user: User; 
@@ -50,34 +77,63 @@ export default function ProviderProfile() {
 
   const user = authManager.getUser();
   const isClient = !!user; // Any authenticated user can request services
-  const isOwner = user && provider && user.id === provider.userId; // Check if current user owns this service
 
   const { data: provider, isLoading } = useQuery<ProviderWithDetails>({
     queryKey: ["/api/providers", providerId],
+    queryFn: async () => {
+      const response = await fetch(`/api/providers/${providerId}`);
+      if (!response.ok) {
+        throw new Error('Provider not found');
+      }
+      return response.json();
+    },
     enabled: !!providerId,
   });
+
+  const { data: categories = [] } = useQuery<ServiceCategory[]>({
+    queryKey: ["/api/categories"],
+  });
+
+  const isOwner = user && provider && user.id === provider.userId; // Check if current user owns this service
 
   const form = useForm<RequestForm>({
     resolver: zodResolver(requestSchema),
     defaultValues: {
       title: "",
       description: "",
+      pricingType: "hourly",
       proposedPrice: "",
+      proposedHours: "",
+      proposedDays: "",
       scheduledDate: "",
       scheduledTime: "",
     },
   });
 
+  // Update default pricingType when provider data loads
+  useEffect(() => {
+    if (Array.isArray(provider?.pricingTypes) && provider.pricingTypes.length > 0) {
+      const firstAvailableType = provider.pricingTypes[0];
+      form.setValue('pricingType', firstAvailableType as 'hourly' | 'daily' | 'fixed');
+    }
+  }, [provider, form]);
+
   const createRequestMutation = useMutation({
     mutationFn: async (data: RequestForm) => {
-      const response = await authenticatedRequest('POST', '/api/requests', {
-        ...data,
+      const payload = {
+        title: data.title,
+        description: data.description,
         providerId,
-        proposedPrice: data.proposedPrice ? parseFloat(data.proposedPrice) : undefined,
+        pricingType: data.pricingType,
+        proposedPrice: data.proposedPrice || undefined,
+        proposedHours: data.proposedHours || undefined,
+        proposedDays: data.proposedDays || undefined,
         scheduledDate: data.scheduledDate && data.scheduledTime ? 
           new Date(`${data.scheduledDate}T${data.scheduledTime}:00`) : 
           data.scheduledDate ? new Date(data.scheduledDate) : undefined,
-      });
+      };
+      
+      const response = await authenticatedRequest('POST', '/api/requests', payload);
       return response.json();
     },
     onSuccess: () => {
@@ -89,51 +145,15 @@ export default function ProviderProfile() {
       form.reset();
       queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
     },
-    onError: () => {
+    onError: (error: any) => {
+      console.error("Error creating request:", error);
       toast({
         title: "Erro ao enviar solicitação",
-        description: "Tente novamente em alguns instantes.",
+        description: error.response?.data?.message || error.message || "Tente novamente em alguns instantes.",
         variant: "destructive",
       });
     },
   });
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="animate-pulse">
-            <div className="bg-white rounded-xl shadow-sm p-8">
-              <div className="h-8 bg-gray-200 rounded mb-4"></div>
-              <div className="h-4 bg-gray-200 rounded mb-2"></div>
-              <div className="h-4 bg-gray-200 rounded mb-8"></div>
-              <div className="h-32 bg-gray-200 rounded"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!provider) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Card>
-            <CardContent className="text-center py-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Profissional não encontrado</h2>
-              <p className="text-gray-600 mb-4">O profissional que você está procurando não existe.</p>
-              <Button onClick={() => setLocation('/services')}>
-                Voltar para busca
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
 
   const messageForm = useForm<MessageForm>({
     resolver: zodResolver(messageSchema),
@@ -141,6 +161,40 @@ export default function ProviderProfile() {
       content: "",
     },
   });
+
+  const editForm = useForm<EditProviderForm>({
+    resolver: zodResolver(editProviderSchema),
+    defaultValues: {
+      categoryId: provider?.categoryId || "",
+      description: provider?.description || "",
+      pricingTypes: Array.isArray(provider?.pricingTypes) ? provider.pricingTypes : ["fixed"],
+      minHourlyRate: provider?.minHourlyRate || "",
+      minDailyRate: provider?.minDailyRate || "",
+      minFixedRate: provider?.minFixedRate || "",
+      experience: provider?.experience || "",
+      location: provider?.location || "",
+      isVerified: provider?.isVerified || false,
+      availability: provider?.availability || {},
+    },
+  });
+
+  // Reset edit form when provider data loads
+  useEffect(() => {
+    if (provider) {
+      editForm.reset({
+        categoryId: provider.categoryId,
+        description: provider.description,
+        pricingTypes: Array.isArray(provider.pricingTypes) ? provider.pricingTypes : ["fixed"],
+        minHourlyRate: provider.minHourlyRate || "",
+        minDailyRate: provider.minDailyRate || "",
+        minFixedRate: provider.minFixedRate || "",
+        experience: provider.experience,
+        location: provider.location,
+        isVerified: provider.isVerified,
+        availability: provider.availability || {},
+      });
+    }
+  }, [provider, editForm]);
 
   const sendMessageMutation = useMutation({
     mutationFn: async (data: MessageForm) => {
@@ -167,6 +221,28 @@ export default function ProviderProfile() {
     },
   });
 
+  const updateProviderMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await authenticatedRequest('PUT', `/api/providers/${providerId}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Serviço atualizado!",
+        description: "Suas alterações foram salvas com sucesso.",
+      });
+      setShowEditForm(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/providers", providerId] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro ao atualizar serviço",
+        description: error.message || "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const deleteProviderMutation = useMutation({
     mutationFn: async () => {
       const response = await authenticatedRequest('DELETE', `/api/providers/${providerId}`);
@@ -179,10 +255,10 @@ export default function ProviderProfile() {
       });
       setLocation('/services');
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: "Erro ao excluir serviço",
-        description: "Tente novamente em alguns instantes.",
+        description: error.response?.data?.message || "Tente novamente em alguns instantes.",
         variant: "destructive",
       });
     },
@@ -195,6 +271,51 @@ export default function ProviderProfile() {
   const onMessageSubmit = (data: MessageForm) => {
     sendMessageMutation.mutate(data);
   };
+
+  const onEditSubmit = (data: EditProviderForm) => {
+    updateProviderMutation.mutate(data);
+  };
+
+  // Verificações condicionais APÓS todos os hooks
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse">
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/4 mb-6"></div>
+              <div className="space-y-3">
+                <div className="h-4 bg-gray-200 rounded"></div>
+                <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+                <div className="h-4 bg-gray-200 rounded w-4/6"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!provider) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Prestador não encontrado</h2>
+            <p className="text-gray-600 mb-4">
+              O prestador que você está procurando não existe ou foi removido.
+            </p>
+            <Button onClick={() => setLocation('/services')}>
+              Voltar aos Serviços
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -221,9 +342,16 @@ export default function ProviderProfile() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-2xl font-bold text-gray-900">
-                      R$ {provider.hourlyRate}/h
-                    </p>
+                    <div className="text-sm text-gray-600 mb-2">
+                      <div className="font-medium">Tipos de orçamento:</div>
+                      <div className="flex gap-1 mt-1">
+                        {Array.isArray(provider.pricingTypes) && provider.pricingTypes.map((type: string) => (
+                          <span key={type} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                            {type === 'hourly' ? 'Hora' : type === 'daily' ? 'Dia' : 'Fixo'}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                     {provider.isVerified && (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 mt-2">
                         Verificado
@@ -378,10 +506,77 @@ export default function ProviderProfile() {
                     
                     <FormField
                       control={form.control}
+                      name="pricingType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Tipo de orçamento</FormLabel>
+                          <FormControl>
+                            <select 
+                              {...field} 
+                              className="w-full border rounded-md p-2"
+                            >
+                              {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('hourly') && (
+                                <option value="hourly">Por hora {provider.minHourlyRate ? `- R$ ${provider.minHourlyRate}` : ''}</option>
+                              )}
+                              {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('daily') && (
+                                <option value="daily">Por dia {provider.minDailyRate ? `- R$ ${provider.minDailyRate}` : ''}</option>
+                              )}
+                              {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('fixed') && (
+                                <option value="fixed">Fixo {provider.minFixedRate ? `- R$ ${provider.minFixedRate}` : ''}</option>
+                              )}
+                            </select>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {form.watch('pricingType') === 'hourly' && (
+                      <FormField
+                        control={form.control}
+                        name="proposedHours"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Horas propostas</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                placeholder="Ex: 2" 
+                                {...field} 
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {form.watch('pricingType') === 'daily' && (
+                      <FormField
+                        control={form.control}
+                        name="proposedDays"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Dias propostos</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                placeholder="Ex: 1" 
+                                {...field} 
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                    
+                    <FormField
+                      control={form.control}
                       name="proposedPrice"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Orçamento previsto (opcional)</FormLabel>
+                          <FormLabel>Preço proposto (opcional)</FormLabel>
                           <FormControl>
                             <Input 
                               type="number" 
@@ -498,6 +693,207 @@ export default function ProviderProfile() {
                         className="flex-1 bg-primary-600 hover:bg-primary-700"
                       >
                         {sendMessageMutation.isPending ? "Enviando..." : "Enviar"}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Edit Form Modal */}
+        {showEditForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <CardHeader>
+                <CardTitle>Editar Serviço</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Form {...editForm}>
+                  <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-6">
+                    <FormField
+                      control={editForm.control}
+                      name="categoryId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Categoria de Serviço</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecione uma categoria" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {categories.map((category) => (
+                                <SelectItem key={category.id} value={category.id}>
+                                  {category.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={editForm.control}
+                      name="description"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Descrição do Serviço</FormLabel>
+                          <FormControl>
+                            <Textarea 
+                              placeholder="Descreva seus serviços..."
+                              rows={4}
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={editForm.control}
+                      name="pricingTypes"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Tipos de Cobrança</FormLabel>
+                          <div className="flex flex-col space-y-3">
+                            {[
+                              { id: 'hourly', label: '⏰ Por Hora', desc: 'Cobrança por hora trabalhada' },
+                              { id: 'daily', label: '📅 Por Dia', desc: 'Cobrança por dia completo' },
+                              { id: 'fixed', label: '💰 Valor Fixo', desc: 'Preço fechado para o serviço' }
+                            ].map((option) => (
+                              <div key={option.id} className="flex items-start space-x-3">
+                                <Checkbox
+                                  checked={field.value?.includes(option.id as any)}
+                                  onCheckedChange={(checked) => {
+                                    const currentValue = field.value || [];
+                                    if (checked) {
+                                      field.onChange([...currentValue, option.id]);
+                                    } else {
+                                      field.onChange(currentValue.filter((value: string) => value !== option.id));
+                                    }
+                                  }}
+                                />
+                                <div className="grid gap-1.5 leading-none">
+                                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                    {option.label}
+                                  </label>
+                                  <p className="text-xs text-muted-foreground">
+                                    {option.desc}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* Conditional price fields */}
+                    {editForm.watch('pricingTypes')?.includes('hourly' as any) && (
+                      <FormField
+                        control={editForm.control}
+                        name="minHourlyRate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Valor Mínimo por Hora (R$)</FormLabel>
+                            <FormControl>
+                              <Input type="number" step="0.01" placeholder="Ex: 50.00" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {editForm.watch('pricingTypes')?.includes('daily' as any) && (
+                      <FormField
+                        control={editForm.control}
+                        name="minDailyRate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Valor Mínimo por Dia (R$)</FormLabel>
+                            <FormControl>
+                              <Input type="number" step="0.01" placeholder="Ex: 200.00" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {editForm.watch('pricingTypes')?.includes('fixed' as any) && (
+                      <FormField
+                        control={editForm.control}
+                        name="minFixedRate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Valor Mínimo Fixo (R$)</FormLabel>
+                            <FormControl>
+                              <Input type="number" step="0.01" placeholder="Ex: 150.00" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    <FormField
+                      control={editForm.control}
+                      name="experience"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Experiência</FormLabel>
+                          <FormControl>
+                            <Textarea 
+                              placeholder="Descreva sua experiência..."
+                              rows={3}
+                              value={field.value || ''}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              name={field.name}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={editForm.control}
+                      name="location"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Localização</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Ex: São Paulo, SP" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="flex gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowEditForm(false)}
+                        className="flex-1"
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={updateProviderMutation.isPending}
+                        className="flex-1 bg-primary-600 hover:bg-primary-700"
+                      >
+                        {updateProviderMutation.isPending ? "Salvando..." : "Salvar Alterações"}
                       </Button>
                     </div>
                   </form>

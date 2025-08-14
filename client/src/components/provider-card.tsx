@@ -40,9 +40,29 @@ export default function ProviderCard({ provider, onContact }: ProviderCardProps)
         </p>
         
         <div className="flex items-center justify-between mb-4">
-          <span className="text-gray-700 font-medium">
-            A partir de R$ {provider.hourlyRate}/h
-          </span>
+          <div className="flex flex-col">
+            {Array.isArray(provider.pricingTypes) && provider.pricingTypes.length > 0 ? (
+              <div className="space-y-1">
+                {provider.pricingTypes.includes('hourly') && provider.minHourlyRate && (
+                  <div className="text-sm text-gray-700">
+                    <span className="font-medium">⏰ Por hora:</span> R$ {provider.minHourlyRate}
+                  </div>
+                )}
+                {provider.pricingTypes.includes('daily') && provider.minDailyRate && (
+                  <div className="text-sm text-gray-700">
+                    <span className="font-medium">📅 Por dia:</span> R$ {provider.minDailyRate}
+                  </div>
+                )}
+                {provider.pricingTypes.includes('fixed') && provider.minFixedRate && (
+                  <div className="text-sm text-gray-700">
+                    <span className="font-medium">💰 Fixo:</span> R$ {provider.minFixedRate}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span className="text-gray-500 text-sm">Consultar valores</span>
+            )}
+          </div>
           <div className="flex items-center text-sm text-gray-500">
             <MapPin className="w-4 h-4 mr-1" />
             <span>{provider.location}</span>

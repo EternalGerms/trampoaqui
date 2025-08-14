@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import { 
@@ -18,7 +20,11 @@ import {
   Calendar, 
   MapPin,
   ArrowRight,
-  CheckCircle2
+  CheckCircle2,
+  Clock,
+  DollarSign,
+  Check,
+  X
 } from "lucide-react";
 
 interface ServiceRequest {
@@ -29,6 +35,31 @@ interface ServiceRequest {
   proposedPrice: string;
   scheduledDate: string;
   createdAt: string;
+  provider: {
+    id: string;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+    };
+  };
+  negotiations?: Array<{
+    id: string;
+    proposerId: string;
+    pricingType: string;
+    proposedPrice: string | null;
+    proposedHours: number | null;
+    proposedDays: number | null;
+    proposedDate: Date | null;
+    message: string;
+    status: string;
+    createdAt: Date;
+    proposer: { 
+      id: string;
+      name: string; 
+      email: string; 
+    };
+  }>;
 }
 
 export default function Dashboard() {
@@ -69,9 +100,32 @@ export default function Dashboard() {
     },
   });
 
+  // Accept/Reject negotiation mutation
+  const updateNegotiationStatusMutation = useMutation({
+    mutationFn: async ({ negotiationId, status }: { negotiationId: string; status: 'accepted' | 'rejected' }) => {
+      const response = await apiRequest('PUT', `/api/negotiations/${negotiationId}/status`, { status });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Negociação atualizada!",
+        description: "O status da negociação foi alterado com sucesso.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao atualizar negociação",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'negotiating': return 'bg-orange-100 text-orange-800';
       case 'accepted': return 'bg-blue-100 text-blue-800';
       case 'completed': return 'bg-green-100 text-green-800';
       case 'cancelled': return 'bg-red-100 text-red-800';
@@ -82,6 +136,7 @@ export default function Dashboard() {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'pending': return 'Pendente';
+      case 'negotiating': return 'Negociando';
       case 'accepted': return 'Aceito';
       case 'completed': return 'Concluído';
       case 'cancelled': return 'Cancelado';
@@ -151,7 +206,10 @@ export default function Dashboard() {
                                 </Badge>
                               </div>
                               <p className="text-gray-600 text-sm mb-3">{request.description}</p>
-                              <div className="flex items-center gap-4 text-sm text-gray-500">
+                              <div className="flex items-center gap-4 text-sm text-gray-500 mb-3">
+                                <span className="font-medium text-blue-600">
+                                  Prestador: {request.provider.user.name}
+                                </span>
                                 {request.proposedPrice && (
                                   <span className="font-medium text-green-600">
                                     R$ {parseFloat(request.proposedPrice).toFixed(2).replace('.', ',')}
@@ -168,6 +226,90 @@ export default function Dashboard() {
                                   Criado em {new Date(request.createdAt).toLocaleDateString('pt-BR')}
                                 </div>
                               </div>
+
+                              {/* Show negotiations if they exist */}
+                              {request.negotiations && request.negotiations.length > 0 && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                                  <h4 className="font-medium text-blue-900 mb-2 flex items-center gap-2">
+                                    <Clock className="w-4 h-4" />
+                                    Negociações ({request.negotiations.length})
+                                  </h4>
+                                  <div className="space-y-2">
+                                    {request.negotiations.map((negotiation) => (
+                                      <div key={negotiation.id} className="bg-white border border-blue-200 rounded p-3">
+                                        <div className="flex justify-between items-start mb-2">
+                                          <div className="flex-1">
+                                            <p className="text-sm text-gray-700 mb-1">
+                                              <strong>Proposta de {negotiation.proposer.name}:</strong>
+                                            </p>
+                                            <p className="text-sm text-gray-600 mb-2">{negotiation.message}</p>
+                                            <div className="flex items-center gap-4 text-sm">
+                                              {negotiation.proposedPrice && (
+                                                <span className="flex items-center gap-1 text-green-600 font-medium">
+                                                  <DollarSign className="w-3 h-3" />
+                                                  R$ {parseFloat(negotiation.proposedPrice).toFixed(2).replace('.', ',')}
+                                                </span>
+                                              )}
+                                              {negotiation.proposedHours && (
+                                                <span className="text-gray-600">
+                                                  {negotiation.proposedHours} horas
+                                                </span>
+                                              )}
+                                              {negotiation.proposedDays && (
+                                                <span className="text-gray-600">
+                                                  {negotiation.proposedDays} dias
+                                                </span>
+                                              )}
+                                              {negotiation.proposedDate && (
+                                                <span className="text-gray-600">
+                                                  {new Date(negotiation.proposedDate).toLocaleDateString('pt-BR')}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          {negotiation.status === 'pending' && (
+                                            <div className="flex gap-2 ml-4">
+                                              <Button
+                                                size="sm"
+                                                onClick={() => updateNegotiationStatusMutation.mutate({ 
+                                                  negotiationId: negotiation.id, 
+                                                  status: 'accepted' 
+                                                })}
+                                                className="bg-green-600 hover:bg-green-700 text-white"
+                                                disabled={updateNegotiationStatusMutation.isPending}
+                                              >
+                                                <Check className="w-3 h-3 mr-1" />
+                                                Aceitar
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => updateNegotiationStatusMutation.mutate({ 
+                                                  negotiationId: negotiation.id, 
+                                                  status: 'rejected' 
+                                                })}
+                                                className="border-red-300 text-red-600 hover:bg-red-50"
+                                                disabled={updateNegotiationStatusMutation.isPending}
+                                              >
+                                                <X className="w-3 h-3 mr-1" />
+                                                Recusar
+                                              </Button>
+                                            </div>
+                                          )}
+                                          {negotiation.status !== 'pending' && (
+                                            <Badge className={negotiation.status === 'accepted' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                                              {negotiation.status === 'accepted' ? 'Aceito' : 'Recusado'}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                          {new Date(negotiation.createdAt).toLocaleDateString('pt-BR')} às {new Date(negotiation.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                             <Button variant="outline" size="sm">
                               <MessageSquare className="w-4 h-4 mr-2" />

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import Header from "@/components/header";
@@ -25,8 +25,8 @@ export default function Services() {
   const [sortBy, setSortBy] = useState("rating");
 
   // Get initial filters from URL params
-  const urlParams = new URLSearchParams(window.location.search);
-  useState(() => {
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
     const categoryParam = urlParams.get('category');
     const searchParam = urlParams.get('search');
     const locationParam = urlParams.get('location');
@@ -34,7 +34,7 @@ export default function Services() {
     if (categoryParam) setSelectedCategory(categoryParam);
     if (searchParam) setSearchQuery(searchParam);
     if (locationParam) setLocationState(locationParam);
-  });
+  }, []);
 
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/categories"],
@@ -69,10 +69,28 @@ export default function Services() {
         filtered.sort((a, b) => b.averageRating - a.averageRating);
         break;
       case "price_low":
-        filtered.sort((a, b) => parseFloat(a.hourlyRate) - parseFloat(b.hourlyRate));
+        filtered.sort((a, b) => {
+          const getMinPrice = (provider: any) => {
+            const prices = [];
+            if (provider.minHourlyRate) prices.push(parseFloat(provider.minHourlyRate));
+            if (provider.minDailyRate) prices.push(parseFloat(provider.minDailyRate));
+            if (provider.minFixedRate) prices.push(parseFloat(provider.minFixedRate));
+            return prices.length > 0 ? Math.min(...prices) : Infinity;
+          };
+          return getMinPrice(a) - getMinPrice(b);
+        });
         break;
       case "price_high":
-        filtered.sort((a, b) => parseFloat(b.hourlyRate) - parseFloat(a.hourlyRate));
+        filtered.sort((a, b) => {
+          const getMinPrice = (provider: any) => {
+            const prices = [];
+            if (provider.minHourlyRate) prices.push(parseFloat(provider.minHourlyRate));
+            if (provider.minDailyRate) prices.push(parseFloat(provider.minDailyRate));
+            if (provider.minFixedRate) prices.push(parseFloat(provider.minFixedRate));
+            return prices.length > 0 ? Math.min(...prices) : -Infinity;
+          };
+          return getMinPrice(b) - getMinPrice(a);
+        });
         break;
       case "newest":
         filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

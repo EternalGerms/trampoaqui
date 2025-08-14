@@ -11,6 +11,10 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   phone: text("phone"),
   isProviderEnabled: boolean("is_provider_enabled").default(false).notNull(),
+  // Provider profile fields
+  bio: text("bio"), // About me section
+  experience: text("experience"), // Professional experience
+  location: text("location"), // Service location
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -26,7 +30,10 @@ export const serviceProviders = pgTable("service_providers", {
   userId: varchar("user_id").notNull().references(() => users.id),
   categoryId: varchar("category_id").notNull().references(() => serviceCategories.id),
   description: text("description").notNull(),
-  hourlyRate: decimal("hourly_rate", { precision: 10, scale: 2 }).notNull(),
+  pricingTypes: jsonb("pricing_types").notNull(), // ['hourly', 'daily', 'fixed']
+  minHourlyRate: decimal("min_hourly_rate", { precision: 10, scale: 2 }),
+  minDailyRate: decimal("min_daily_rate", { precision: 10, scale: 2 }),
+  minFixedRate: decimal("min_fixed_rate", { precision: 10, scale: 2 }),
   experience: text("experience"),
   location: text("location").notNull(),
   isVerified: boolean("is_verified").default(false).notNull(),
@@ -40,11 +47,31 @@ export const serviceRequests = pgTable("service_requests", {
   providerId: varchar("provider_id").notNull().references(() => serviceProviders.id),
   title: text("title").notNull(),
   description: text("description").notNull(),
-  status: text("status").notNull().default('pending'), // 'pending', 'accepted', 'completed', 'cancelled'
+  status: text("status").notNull().default('pending'), // 'pending', 'negotiating', 'accepted', 'completed', 'cancelled'
+  pricingType: text("pricing_type").notNull(), // 'hourly', 'daily', 'fixed'
   proposedPrice: decimal("proposed_price", { precision: 10, scale: 2 }),
+  proposedHours: integer("proposed_hours"), // Para serviços por hora
+  proposedDays: integer("proposed_days"), // Para serviços diários
   scheduledDate: timestamp("scheduled_date"),
+  negotiationHistory: jsonb("negotiation_history").default([]), // Array de contra-propostas
+  clientCompletedAt: timestamp("client_completed_at"), // Quando o cliente marcou como concluído
+  providerCompletedAt: timestamp("provider_completed_at"), // Quando o prestador marcou como concluído
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const negotiations = pgTable("negotiations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestId: varchar("request_id").notNull().references(() => serviceRequests.id),
+  proposerId: varchar("proposer_id").notNull().references(() => users.id), // Quem fez a proposta
+  pricingType: text("pricing_type").notNull(), // 'hourly', 'daily', 'fixed'
+  proposedPrice: decimal("proposed_price", { precision: 10, scale: 2 }),
+  proposedHours: integer("proposed_hours"),
+  proposedDays: integer("proposed_days"),
+  proposedDate: timestamp("proposed_date"),
+  message: text("message").notNull(), // Motivo da alteração
+  status: text("status").notNull().default('pending'), // 'pending', 'accepted', 'rejected'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const reviews = pgTable("reviews", {
@@ -105,6 +132,18 @@ export const serviceRequestsRelations = relations(serviceRequests, ({ one, many 
   }),
   reviews: many(reviews),
   messages: many(messages),
+  negotiations: many(negotiations),
+}));
+
+export const negotiationsRelations = relations(negotiations, ({ one }) => ({
+  request: one(serviceRequests, {
+    fields: [negotiations.requestId],
+    references: [serviceRequests.id],
+  }),
+  proposer: one(users, {
+    fields: [negotiations.proposerId],
+    references: [users.id],
+  }),
 }));
 
 export const reviewsRelations = relations(reviews, ({ one }) => ({
@@ -148,6 +187,13 @@ export const insertUserSchema = createInsertSchema(users).omit({
   isProviderEnabled: true, // This will be handled separately
 });
 
+// Provider profile update schema (for updating user profile info)
+export const updateProviderProfileSchema = z.object({
+  bio: z.string().optional(),
+  experience: z.string().min(10, "Experiência deve ter pelo menos 10 caracteres"),
+  location: z.string().min(3, "Localização deve ter pelo menos 3 caracteres"),
+});
+
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({
   id: true,
 });
@@ -155,17 +201,116 @@ export const insertServiceCategorySchema = createInsertSchema(serviceCategories)
 export const insertServiceProviderSchema = createInsertSchema(serviceProviders).omit({
   id: true,
   createdAt: true,
+}).extend({
+  pricingTypes: z.array(z.enum(['hourly', 'daily', 'fixed'])).min(1),
+  minHourlyRate: z.union([z.string(), z.number()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return val === '' ? undefined : val;
+    }
+    return val?.toString();
+  }),
+  minDailyRate: z.union([z.string(), z.number()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return val === '' ? undefined : val;
+    }
+    return val?.toString();
+  }),
+  minFixedRate: z.union([z.string(), z.number()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return val === '' ? undefined : val;
+    }
+    return val?.toString();
+  }),
 });
+
+
 
 export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  scheduledDate: z.union([z.date(), z.string()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return new Date(val);
+    }
+    return val;
+  }),
+  proposedPrice: z.union([z.string(), z.number()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return val === '' ? undefined : val;
+    }
+    return val?.toString();
+  }),
+  proposedHours: z.union([z.string(), z.number()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return val === '' ? undefined : parseInt(val, 10);
+    }
+    return val;
+  }),
+  proposedDays: z.union([z.string(), z.number()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return val === '' ? undefined : parseInt(val, 10);
+    }
+    return val;
+  }),
+});
+
+export const insertNegotiationSchema = createInsertSchema(negotiations).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  proposedPrice: z.union([z.string(), z.number()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return val === '' ? undefined : val;
+    }
+    return val?.toString();
+  }),
+  proposedHours: z.union([z.string(), z.number()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return val === '' ? undefined : parseInt(val, 10);
+    }
+    return val;
+  }),
+  proposedDays: z.union([z.string(), z.number()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return val === '' ? undefined : parseInt(val, 10);
+    }
+    return val;
+  }),
+  proposedDate: z.union([z.date(), z.string()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return new Date(val);
+    }
+    return val;
+  }),
+});
+
+export const updateServiceRequestSchema = insertServiceRequestSchema.partial().extend({
+  clientCompletedAt: z.union([z.date(), z.string()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return new Date(val);
+    }
+    return val;
+  }),
+  providerCompletedAt: z.union([z.date(), z.string()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return new Date(val);
+    }
+    return val;
+  }),
 });
 
 export const insertReviewSchema = createInsertSchema(reviews).omit({
   id: true,
   createdAt: true,
+}).extend({
+  rating: z.union([z.string(), z.number()]).transform((val) => {
+    if (typeof val === 'string') {
+      return parseInt(val, 10);
+    }
+    return val;
+  }),
 });
 
 export const insertMessageSchema = createInsertSchema(messages).omit({
@@ -186,3 +331,23 @@ export type Review = typeof reviews.$inferSelect;
 export type InsertReview = z.infer<typeof insertReviewSchema>;
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
+export type Negotiation = typeof negotiations.$inferSelect;
+export type InsertNegotiation = z.infer<typeof insertNegotiationSchema>;
+
+// Extended types for requests with related data
+export type RequestWithClient = ServiceRequest & {
+  client: User;
+};
+
+export type RequestWithProvider = ServiceRequest & {
+  provider: ServiceProvider & {
+    user: User;
+    category: ServiceCategory;
+  };
+};
+
+export type RequestWithNegotiations = ServiceRequest & {
+  negotiations: (Negotiation & {
+    proposer: User;
+  })[];
+};
