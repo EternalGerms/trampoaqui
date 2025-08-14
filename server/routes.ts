@@ -195,6 +195,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = await storage.enableProviderCapability(req.user!.userId);
       
+      // Check if profile is complete and identify missing fields
+      const missingFields = [];
+      if (!user.bio) missingFields.push('bio');
+      if (!user.experience) missingFields.push('experience');
+      if (!user.location) missingFields.push('location');
+      
+      const isProfileComplete = missingFields.length === 0;
+      
       // Generate new token with updated provider status
       const token = jwt.sign({ userId: user.id, isProviderEnabled: user.isProviderEnabled }, JWT_SECRET);
       
@@ -205,7 +213,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: user.email, 
           name: user.name, 
           isProviderEnabled: user.isProviderEnabled 
-        } 
+        },
+        profileStatus: {
+          isComplete: isProfileComplete,
+          missingFields,
+          redirectToProfile: !isProfileComplete
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Check if provider profile is complete
+  app.get("/api/auth/profile/status", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getUser(req.user!.userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Check if profile is complete (has bio, experience, and location)
+      const missingFields = [];
+      if (!user.bio) missingFields.push('bio');
+      if (!user.experience) missingFields.push('experience');
+      if (!user.location) missingFields.push('location');
+      
+      const isProfileComplete = missingFields.length === 0;
+      
+      res.json({ 
+        isProfileComplete,
+        missingFields,
+        profile: {
+          bio: user.bio,
+          experience: user.experience,
+          location: user.location
+        },
+        isProviderEnabled: user.isProviderEnabled,
+        redirectToProfile: !isProfileComplete && user.isProviderEnabled
       });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
@@ -408,20 +453,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log("Provider requests route called for user:", req.user!.userId);
       
+      // First check if user has provider capability enabled
+      const user = await storage.getUser(req.user!.userId);
+      if (!user?.isProviderEnabled) {
+        return res.status(403).json({ 
+          message: "Provider capability not enabled",
+          code: "PROVIDER_NOT_ENABLED"
+        });
+      }
+      
+      // Check if profile is complete and identify missing fields
+      const missingFields = [];
+      if (!user.bio) missingFields.push('bio');
+      if (!user.experience) missingFields.push('experience');
+      if (!user.location) missingFields.push('location');
+      
+      const isProfileComplete = missingFields.length === 0;
+      if (!isProfileComplete) {
+        return res.status(200).json({
+          message: "Profile incomplete",
+          code: "PROFILE_INCOMPLETE",
+          profileStatus: {
+            isComplete: false,
+            missingFields
+          },
+          requests: []
+        });
+      }
+      
       // Get service requests for the current user as a provider
       const provider = await storage.getServiceProviderByUserId(req.user!.userId);
       console.log("Provider found:", provider);
       
       if (!provider) {
         console.log("No provider profile found for user:", req.user!.userId);
-        return res.status(404).json({ message: "Provider profile not found" });
+        return res.status(200).json({
+          message: "Provider profile not found",
+          code: "PROVIDER_PROFILE_NOT_FOUND",
+          profileStatus: {
+            isComplete: true,
+            missingFields: []
+          },
+          requests: []
+        });
       }
       
       console.log("Looking for requests with providerId:", provider.id);
       const requests = await storage.getServiceRequestsByProviderWithNegotiations(provider.id);
       console.log("Requests found:", requests);
       
-      res.json(requests);
+      res.json({
+        message: "Success",
+        code: "SUCCESS",
+        profileStatus: {
+          isComplete: true,
+          missingFields: []
+        },
+        requests
+      });
     } catch (error) {
       console.error("Error in provider requests route:", error);
       res.status(500).json({ message: "Server error" });
