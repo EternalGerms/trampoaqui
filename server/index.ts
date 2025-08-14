@@ -47,9 +47,8 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
+  // IMPORTANT: Setup Vite AFTER all API routes to prevent catch-all from interfering
+  // The catch-all route should only handle frontend routes, not API routes
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {

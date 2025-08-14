@@ -83,6 +83,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Debug endpoint to check authentication
+  app.get("/api/debug/auth", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getUser(req.user!.userId);
+      const provider = await storage.getServiceProviderByUserId(req.user!.userId);
+      
+      res.json({ 
+        authenticatedUser: req.user,
+        userFromDB: user,
+        providerProfile: provider,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Unknown error",
+        authenticatedUser: req.user
+      });
+    }
+  });
+
 
 
   // Auth routes
