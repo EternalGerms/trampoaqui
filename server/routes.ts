@@ -1,6 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { insertUserSchema, insertServiceProviderSchema, insertServiceRequestSchema, updateServiceRequestSchema, insertMessageSchema, insertReviewSchema, insertNegotiationSchema, updateProviderProfileSchema } from "@shared/schema";
@@ -64,8 +66,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint for Docker
   app.get("/api/health", async (req: Request, res: Response) => {
     try {
-      // Test database connection
-      await storage.getUser("test"); // Simple test that doesn't require direct db access
+      // Simple database connection test
+      await db.execute(sql`SELECT 1`);
       res.status(200).json({ 
         status: "healthy", 
         timestamp: new Date().toISOString(),
