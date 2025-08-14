@@ -78,7 +78,7 @@ export interface IStorage {
 
   // Negotiation operations
   createNegotiation(negotiation: InsertNegotiation): Promise<Negotiation>;
-  updateNegotiationStatus(negotiationId: string, status: 'accepted' | 'rejected'): Promise<void>;
+  updateNegotiationStatus(negotiationId: string, status: 'accepted' | 'rejected' | 'counter_proposed'): Promise<void>;
   getNegotiationById(negotiationId: string): Promise<Negotiation | undefined>;
   getNegotiationsByRequest(requestId: string): Promise<(Negotiation & { proposer: User })[]>;
 }
@@ -493,7 +493,7 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateNegotiationStatus(negotiationId: string, status: 'accepted' | 'rejected'): Promise<void> {
+  async updateNegotiationStatus(negotiationId: string, status: 'accepted' | 'rejected' | 'counter_proposed'): Promise<void> {
     await db.update(negotiations)
       .set({ status })
       .where(eq(negotiations.id, negotiationId));

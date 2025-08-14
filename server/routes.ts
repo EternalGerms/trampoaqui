@@ -652,25 +652,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { status } = req.body;
       
       if (!['accepted', 'rejected'].includes(status)) {
-        return res.status(400).json({ message: "Invalid status" });
+        return res.status(400).json({ message: "Invalid status. Must be 'accepted' or 'rejected'" });
       }
       
+      // Get the current negotiation
+      const currentNegotiation = await storage.getNegotiationById(req.params.id);
+      if (!currentNegotiation) {
+        return res.status(404).json({ message: "Negotiation not found" });
+      }
+      
+      // Check if user is authorized to respond to this negotiation
+      const request = await storage.getServiceRequest(currentNegotiation.requestId);
+      if (!request) {
+        return res.status(404).json({ message: "Service request not found" });
+      }
+      
+      // User can only respond if they are the client or provider of the request
+      const isClient = request.clientId === req.user!.userId;
+      const isProvider = request.providerId && (await storage.getServiceProvider(request.providerId))?.userId === req.user!.userId;
+      
+      if (!isClient && !isProvider) {
+        return res.status(403).json({ message: "Unauthorized to respond to this negotiation" });
+      }
+      
+      // User cannot respond to their own negotiation
+      if (currentNegotiation.proposerId === req.user!.userId) {
+        return res.status(400).json({ message: "Cannot respond to your own negotiation" });
+      }
+      
+      // Accept or reject the negotiation
       await storage.updateNegotiationStatus(req.params.id, status);
       
       // If accepted, update the request with the accepted negotiation details
       if (status === 'accepted') {
-        // First get the negotiation by its ID to get the requestId
-        const negotiation = await storage.getNegotiationById(req.params.id);
-        if (negotiation) {
-          await storage.updateServiceRequest(negotiation.requestId, {
-            status: 'accepted',
-            proposedPrice: negotiation.proposedPrice || undefined,
-            proposedHours: negotiation.proposedHours || undefined,
-            proposedDays: negotiation.proposedDays || undefined,
-            scheduledDate: negotiation.proposedDate || undefined,
-            pricingType: negotiation.pricingType,
-          });
-        }
+        await storage.updateServiceRequest(currentNegotiation.requestId, {
+          status: 'accepted',
+          proposedPrice: currentNegotiation.proposedPrice || undefined,
+          proposedHours: currentNegotiation.proposedHours || undefined,
+          proposedDays: currentNegotiation.proposedDays || undefined,
+          scheduledDate: currentNegotiation.proposedDate || undefined,
+          pricingType: currentNegotiation.pricingType,
+        });
       }
       
       res.json({ message: "Negotiation status updated" });
@@ -686,6 +708,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(negotiations);
     } catch (error) {
       console.error("Error getting negotiations:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Create counter proposal endpoint
+  app.post("/api/negotiations/:id/counter-proposal", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const { pricingType, proposedPrice, proposedHours, proposedDays, proposedDate, message } = req.body;
+      
+      // Get the current negotiation
+      const currentNegotiation = await storage.getNegotiationById(req.params.id);
+      if (!currentNegotiation) {
+        return res.status(404).json({ message: "Negotiation not found" });
+      }
+      
+      // Check if user is authorized to respond to this negotiation
+      const request = await storage.getServiceRequest(currentNegotiation.requestId);
+      if (!request) {
+        return res.status(404).json({ message: "Service request not found" });
+      }
+      
+      // User can only respond if they are the client or provider of the request
+      const isClient = request.clientId === req.user!.userId;
+      const isProvider = request.providerId && (await storage.getServiceProvider(request.providerId))?.userId === req.user!.userId;
+      
+      if (!isClient && !isProvider) {
+        return res.status(403).json({ message: "Unauthorized to respond to this negotiation" });
+      }
+      
+      // User cannot respond to their own negotiation
+      if (currentNegotiation.proposerId === req.user!.userId) {
+        return res.status(400).json({ message: "Cannot respond to your own negotiation" });
+      }
+      
+      // Validate required fields
+      if (!pricingType || !message) {
+        return res.status(400).json({ message: "pricingType and message are required" });
+      }
+      
+      // Create a new negotiation as a counter proposal
+      const counterNegotiationData = {
+        requestId: currentNegotiation.requestId,
+        pricingType,
+        proposedPrice,
+        proposedHours,
+        proposedDays,
+        proposedDate,
+        message: message || "Contraproposta",
+      };
+      
+      const counterNegotiation = await storage.createNegotiation({
+        ...counterNegotiationData,
+        proposerId: req.user!.userId,
+      });
+      
+      // Mark the current negotiation as responded to
+      await storage.updateNegotiationStatus(req.params.id, 'counter_proposed');
+      
+      res.json({ 
+        message: "Counter proposal created successfully",
+        counterNegotiation,
+        originalNegotiationId: req.params.id
+      });
+    } catch (error) {
+      console.error("Error creating counter proposal:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
