@@ -83,6 +83,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Profile status endpoint - SIMPLE VERSION
+  app.get("/api/auth/profile/status", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getUser(req.user!.userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const missingFields = [];
+      if (!user.bio) missingFields.push('bio');
+      if (!user.experience) missingFields.push('experience');
+      if (!user.location) missingFields.push('location');
+      
+      const isProfileComplete = missingFields.length === 0;
+      
+      res.json({ 
+        isProfileComplete,
+        missingFields,
+        profile: {
+          bio: user.bio,
+          experience: user.experience,
+          location: user.location
+        },
+        isProviderEnabled: user.isProviderEnabled,
+        redirectToProfile: !isProfileComplete && user.isProviderEnabled
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // Debug endpoint to check authentication
   app.get("/api/debug/auth", authenticateToken, async (req: Request, res: Response) => {
     try {
@@ -225,37 +256,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Check if provider profile is complete
-  app.get("/api/auth/profile/status", authenticateToken, async (req: Request, res: Response) => {
-    try {
-      const user = await storage.getUser(req.user!.userId);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
 
-      // Check if profile is complete (has bio, experience, and location)
-      const missingFields = [];
-      if (!user.bio) missingFields.push('bio');
-      if (!user.experience) missingFields.push('experience');
-      if (!user.location) missingFields.push('location');
-      
-      const isProfileComplete = missingFields.length === 0;
-      
-      res.json({ 
-        isProfileComplete,
-        missingFields,
-        profile: {
-          bio: user.bio,
-          experience: user.experience,
-          location: user.location
-        },
-        isProviderEnabled: user.isProviderEnabled,
-        redirectToProfile: !isProfileComplete && user.isProviderEnabled
-      });
-    } catch (error) {
-      res.status(500).json({ message: "Server error" });
-    }
-  });
 
   // Update provider profile (personal info)
   app.put("/api/auth/profile", authenticateToken, async (req: Request, res: Response) => {
