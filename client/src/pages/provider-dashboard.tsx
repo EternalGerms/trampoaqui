@@ -29,11 +29,15 @@ import {
   AlertCircle,
   Edit,
   DollarSign,
-  Briefcase
+  Briefcase,
+  Check,
+  X
 } from "lucide-react";
 import { authManager, authenticatedRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import ClientReviewDialog from "@/components/client-review-dialog";
+import ClientReviewButton from "@/components/client-review-button";
 import { 
   ServiceProvider, 
   ServiceRequest, 
@@ -51,6 +55,11 @@ const counterProposalSchema = z.object({
   proposedDate: z.string().optional(),
   proposedTime: z.string().optional(),
   message: z.string().min(10, "Mensagem deve ter pelo menos 10 caracteres"),
+}).refine((data) => {
+  // Ensure at least one field has changed from the original request
+  return true; // This will be validated in the submit handler
+}, {
+  message: "Você deve alterar pelo menos um campo para enviar uma contraproposta",
 });
 
 const reviewSchema = z.object({
@@ -82,7 +91,7 @@ type RequestWithClient = ServiceRequest & {
     message: string;
     status: string;
     createdAt: Date;
-    proposer: { name: string; email: string };
+    proposer: { id: string; name: string; email: string };
   }>;
 };
 
@@ -103,14 +112,17 @@ export default function ProviderDashboard() {
   const [counterProposalRequestId, setCounterProposalRequestId] = useState<string | null>(null);
   const [reviewRequestId, setReviewRequestId] = useState<string | null>(null);
   const [revieweeId, setRevieweeId] = useState<string | null>(null);
+  const [originalRequestData, setOriginalRequestData] = useState<any>(null);
+  const [clientReviewDialogOpen, setClientReviewDialogOpen] = useState(false);
+  const [selectedRequestForClientReview, setSelectedRequestForClientReview] = useState<RequestWithClient | null>(null);
 
   const user = authManager.getUser();
 
-  const { data: allProviders } = useQuery<ProviderWithDetails[]>({
+  const { data: allProviders = [] } = useQuery<ProviderWithDetails[]>({
     queryKey: ["/api/providers"],
   });
 
-  const userProviders = allProviders?.filter(p => p.userId === user?.id) || [];
+  const userProviders = Array.isArray(allProviders) ? allProviders.filter(p => p.userId === user?.id) : [];
   const provider = userProviders[0]; // For backward compatibility
 
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
@@ -119,7 +131,33 @@ export default function ProviderDashboard() {
 
   const { data: requests = [], isLoading: requestsLoading } = useQuery<RequestWithClient[]>({
     queryKey: ["/api/requests/provider"],
+    refetchOnWindowFocus: true,
+    select: (data: any) => {
+      if (Array.isArray(data)) return data as RequestWithClient[];
+      if (data && Array.isArray(data.requests)) return data.requests as RequestWithClient[];
+      return [] as RequestWithClient[];
+    },
   });
+
+  // Debug: Log the requests data
+  useEffect(() => {
+    console.log("Provider Dashboard - Requests data:", requests);
+    console.log("Provider Dashboard - Requests loading:", requestsLoading);
+    console.log("Provider Dashboard - Requests length:", requests?.length);
+    
+    // Log negotiations for each request
+    if (requests && requests.length > 0) {
+      requests.forEach((request, index) => {
+        console.log(`Request ${index + 1}:`, {
+          id: request.id,
+          title: request.title,
+          status: request.status,
+          negotiations: request.negotiations,
+          negotiationsCount: request.negotiations?.length || 0
+        });
+      });
+    }
+  }, [requests, requestsLoading]);
 
   const { data: messages = [], isLoading: messagesLoading } = useQuery<MessageWithSender[]>({
     queryKey: ["/api/messages/received"],
@@ -245,6 +283,7 @@ export default function ProviderDashboard() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/requests/provider"] });
       setCounterProposalRequestId(null);
+      setOriginalRequestData(null);
       counterProposalForm.reset();
     },
     onError: () => {
@@ -309,6 +348,119 @@ export default function ProviderDashboard() {
     },
   });
 
+  // Function to open client review dialog
+  const handleOpenClientReviewDialog = (request: RequestWithClient) => {
+    setSelectedRequestForClientReview(request);
+    setClientReviewDialogOpen(true);
+  };
+
+  // Function to check if a negotiation can have actions
+  // This prevents showing action buttons on older negotiations when a newer counter-proposal is pending
+  const canNegotiationHaveActions = (request: RequestWithClient, negotiation: any) => {
+    if (!request.negotiations || request.negotiations.length === 0) return false;
+    
+    // Find the most recent negotiation (regardless of status)
+    const allNegotiations = request.negotiations
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    if (allNegotiations.length === 0) return false;
+    
+    const mostRecentNegotiation = allNegotiations[0];
+    
+    // Only the most recent negotiation can have actions
+    // AND it must not be from the current user (prestador)
+    // AND it must be pending
+    // This ensures that older negotiations (even if pending) are never alterable
+    // 
+    // Example: If there are 3 negotiations:
+    // 1. Original proposal (pending) - CAN have actions
+    // 2. Counter-proposal from provider (pending) - CANNOT have actions (from provider)
+    // 3. Counter-proposal from client (pending) - CAN have actions (most recent, from client)
+    // 4. After accepting/rejecting #3, none of the above can have actions
+    return negotiation.id === mostRecentNegotiation.id && 
+           negotiation.proposer.id !== user?.id && 
+           negotiation.status === 'pending';
+  };
+
+  // Function to get the effective status of a negotiation
+  // This handles the logic for showing "Recusado" vs "Substituída" vs "Aguardando resposta"
+  const getEffectiveNegotiationStatus = (request: RequestWithClient, negotiation: any) => {
+    // If negotiation is already accepted/rejected, return that status
+    if (negotiation.status !== 'pending') {
+      return negotiation.status;
+    }
+
+    // Safety check for negotiations array
+    if (!request.negotiations || request.negotiations.length === 0) {
+      return 'pending';
+    }
+
+    // Find the most recent negotiation (regardless of status)
+    const allNegotiations = request.negotiations
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    if (allNegotiations.length === 0) return 'pending';
+    
+    const mostRecentNegotiation = allNegotiations[0];
+    
+    // If this is the most recent negotiation
+    if (negotiation.id === mostRecentNegotiation.id) {
+      // If it's from the current user (prestador), show "Aguardando resposta"
+      if (negotiation.proposer.id === user?.id) {
+        return 'pending';
+      }
+      // If it's from the client and still pending, show "Aguardando resposta" (can have actions)
+      if (negotiation.status === 'pending') {
+        return 'pending';
+      }
+      // If it's from the client but was accepted/rejected, return the actual status
+      return negotiation.status;
+    }
+    
+    // If this is an older negotiation, it should be marked as "Recusado"
+    // because a newer proposal has been made or the most recent was acted upon
+    return 'rejected';
+  };
+
+  // Function to get the effective request status
+  // This determines if a request should show "Negociando" or "Cancelado"
+  const getEffectiveRequestStatus = (request: RequestWithClient) => {
+    // If request is already completed, accepted, or cancelled, return that status
+    if (['completed', 'accepted', 'cancelled'].includes(request.status)) {
+      return request.status;
+    }
+
+    // If request is pending and has no negotiations, return pending
+    if (request.status === 'pending' && (!request.negotiations || request.negotiations.length === 0)) {
+      return 'pending';
+    }
+
+    // If request is negotiating, check if all negotiations are rejected
+    if (request.status === 'negotiating' && request.negotiations && request.negotiations.length > 0) {
+      const allNegotiations = request.negotiations
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      const mostRecentNegotiation = allNegotiations[0];
+      
+      // If the most recent negotiation was rejected, the request should be cancelled
+      if (mostRecentNegotiation.status === 'rejected') {
+        return 'cancelled';
+      }
+      
+      // If the most recent negotiation was accepted, the request should be accepted
+      if (mostRecentNegotiation.status === 'accepted') {
+        return 'accepted';
+      }
+      
+      // If the most recent negotiation is still pending, keep negotiating
+      if (mostRecentNegotiation.status === 'pending') {
+        return 'negotiating';
+      }
+    }
+
+    return request.status;
+  };
+
   // Redirect if not a provider (after all hooks)
   if (!user || !user.isProviderEnabled) {
     setLocation('/');
@@ -366,7 +518,27 @@ export default function ProviderDashboard() {
   };
 
   const handleCounterProposal = (data: CounterProposalForm) => {
-    if (!counterProposalRequestId) return;
+    if (!counterProposalRequestId || !originalRequestData) return;
+    
+    // Check if any field has changed from the original request
+    const hasChanges = 
+      data.pricingType !== originalRequestData.pricingType ||
+      data.proposedPrice !== (originalRequestData.proposedPrice || "") ||
+      data.proposedHours !== (originalRequestData.proposedHours?.toString() || "") ||
+      data.proposedDays !== (originalRequestData.proposedDays?.toString() || "") ||
+      data.proposedDate !== (originalRequestData.scheduledDate ? 
+        new Date(originalRequestData.scheduledDate).toISOString().split('T')[0] : "") ||
+      data.proposedTime !== (originalRequestData.scheduledDate ? 
+        new Date(originalRequestData.scheduledDate).toTimeString().slice(0, 5) : "");
+    
+    if (!hasChanges) {
+      toast({
+        title: "Nenhuma alteração detectada",
+        description: "Você deve alterar pelo menos um campo para enviar uma contraproposta.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     const proposalData = {
       requestId: counterProposalRequestId,
@@ -387,6 +559,8 @@ export default function ProviderDashboard() {
     switch (status) {
       case 'pending':
         return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><AlertCircle className="w-3 h-3 mr-1" />Pendente</Badge>;
+      case 'negotiating':
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><MessageCircle className="w-3 h-3 mr-1" />Negociando</Badge>;
       case 'accepted':
         return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Clock className="w-3 h-3 mr-1" />Aceito</Badge>;
       case 'pending_completion':
@@ -400,11 +574,13 @@ export default function ProviderDashboard() {
     }
   };
 
-  const completedServices = requests.filter(r => r.status === 'completed').length;
-  const pendingRequests = requests.filter(r => r.status === 'pending').length;
-  const monthlyEarnings = requests
-    .filter(r => r.status === 'completed' && r.proposedPrice)
-    .reduce((sum, r) => sum + parseFloat(r.proposedPrice || "0"), 0);
+  const completedServices = Array.isArray(requests) ? requests.filter(r => r.status === 'completed').length : 0;
+  const pendingRequests = Array.isArray(requests) ? requests.filter(r => r.status === 'pending').length : 0;
+  const monthlyEarnings = Array.isArray(requests) 
+    ? requests
+        .filter(r => r.status === 'completed' && r.proposedPrice)
+        .reduce((sum, r) => sum + parseFloat(r.proposedPrice || "0"), 0)
+    : 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -569,7 +745,7 @@ export default function ProviderDashboard() {
                               <p className="font-medium text-gray-900 text-sm">{request.client.name}</p>
                               <p className="text-gray-600 text-xs">{request.title}</p>
                             </div>
-                            {getStatusBadge(request.status)}
+                            {getStatusBadge(getEffectiveRequestStatus(request))}
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-gray-500">
@@ -725,17 +901,341 @@ export default function ProviderDashboard() {
                             <h4 className="font-semibold text-gray-900">{request.title}</h4>
                             <p className="text-gray-600 text-sm">Cliente: {request.client.name}</p>
                           </div>
-                          {getStatusBadge(request.status)}
+                          {getStatusBadge(getEffectiveRequestStatus(request))}
                         </div>
                         
                         <p className="text-gray-700 mb-3">{request.description}</p>
                         
-                        <div className="flex justify-between items-center text-sm text-gray-600 mb-3">
-                          <span>Solicitado em: {new Date(request.createdAt).toLocaleDateString('pt-BR')}</span>
+                        {/* Enhanced request details */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 p-3 bg-gray-50 rounded-lg">
+                          <div>
+                            <p className="text-xs text-gray-500 font-medium">Tipo de Orçamento</p>
+                            <p className="text-sm font-medium text-gray-900 capitalize">
+                              {request.pricingType === 'hourly' ? 'Por Hora' : 
+                               request.pricingType === 'daily' ? 'Por Dia' : 'Valor Fixo'}
+                            </p>
+                          </div>
+                          
                           {request.proposedPrice && (
-                            <span className="font-medium">Orçamento: R$ {request.proposedPrice}</span>
+                            <div>
+                              <p className="text-xs text-gray-500 font-medium">Orçamento</p>
+                              <p className="text-sm font-medium text-green-600">R$ {request.proposedPrice}</p>
+                            </div>
+                          )}
+                          
+                          {request.proposedHours && (
+                            <div>
+                              <p className="text-xs text-gray-500 font-medium">Tempo Estimado</p>
+                              <p className="text-sm font-medium text-gray-900">{request.proposedHours}h</p>
+                            </div>
+                          )}
+                          
+                          {request.proposedDays && (
+                            <div>
+                              <p className="text-xs text-gray-500 font-medium">Dias Estimados</p>
+                              <p className="text-sm font-medium text-gray-900">{request.proposedDays} dias</p>
+                            </div>
+                          )}
+                          
+                          {request.scheduledDate && (
+                            <div className="md:col-span-2">
+                              <p className="text-xs text-gray-500 font-medium">Data e Horário Agendado</p>
+                              <p className="text-sm font-medium text-blue-600">
+                                {formatDateTime(request.scheduledDate)}
+                              </p>
+                            </div>
                           )}
                         </div>
+                        
+                        <div className="flex justify-between items-center text-sm text-gray-600 mb-3">
+                          <span>Solicitado em: {new Date(request.createdAt).toLocaleDateString('pt-BR')}</span>
+                        </div>
+                        
+                        {/* Show negotiations if they exist */}
+                        {request.negotiations && request.negotiations.length > 0 && (
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                            <h4 className="font-medium text-blue-900 mb-2 flex items-center gap-2">
+                              <Clock className="w-4 h-4" />
+                              Negociações ({request.negotiations.length})
+                            </h4>
+                            <div className="space-y-2">
+                              {request.negotiations.map((negotiation) => (
+                                <div key={negotiation.id} className="bg-white border border-blue-200 rounded p-3">
+                                  <div className="flex justify-between items-start mb-2">
+                                    <div className="flex-1">
+                                      <p className="text-sm text-gray-700 mb-1">
+                                        <strong>Proposta de {negotiation.proposer.name}:</strong>
+                                      </p>
+                                      <p className="text-sm text-gray-600 mb-2">{negotiation.message}</p>
+                                      <div className="flex items-center gap-4 text-sm">
+                                        {negotiation.proposedPrice && (
+                                          <span className="flex items-center gap-1 text-green-600 font-medium">
+                                            <DollarSign className="w-3 h-3" />
+                                            R$ {parseFloat(negotiation.proposedPrice).toFixed(2).replace('.', ',')}
+                                          </span>
+                                        )}
+                                        {negotiation.proposedHours && (
+                                          <span className="text-gray-600">
+                                            {negotiation.proposedHours} horas
+                                          </span>
+                                        )}
+                                        {negotiation.proposedDays && (
+                                          <span className="text-gray-600">
+                                            {negotiation.proposedDays} dias
+                                          </span>
+                                        )}
+                                        {negotiation.proposedDate && (
+                                          <span className="text-gray-600">
+                                            {new Date(negotiation.proposedDate).toLocaleDateString('pt-BR')}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {canNegotiationHaveActions(request, negotiation) && (
+                                      <div className="flex gap-2 ml-4">
+                                        <Button
+                                          size="sm"
+                                          onClick={() => updateNegotiationStatusMutation.mutate({ 
+                                            negotiationId: negotiation.id, 
+                                            status: 'accepted' 
+                                          })}
+                                          className="bg-green-600 hover:bg-green-700 text-white"
+                                          disabled={updateNegotiationStatusMutation.isPending}
+                                        >
+                                          <Check className="w-3 h-3 mr-1" />
+                                          Aceitar
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => updateNegotiationStatusMutation.mutate({ 
+                                            negotiationId: negotiation.id, 
+                                            status: 'rejected' 
+                                          })}
+                                          className="border-red-300 text-red-600 hover:bg-red-50"
+                                          disabled={updateNegotiationStatusMutation.isPending}
+                                        >
+                                          <X className="w-3 h-3 mr-1" />
+                                          Recusar
+                                        </Button>
+                                        <Dialog>
+                                          <DialogTrigger asChild>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => {
+                                                setCounterProposalRequestId(request.id);
+                                                setOriginalRequestData(negotiation);
+                                                // Pre-fill form with current negotiation data
+                                                counterProposalForm.reset({
+                                                  pricingType: negotiation.pricingType as 'hourly' | 'daily' | 'fixed',
+                                                  proposedPrice: negotiation.proposedPrice || "",
+                                                  proposedHours: negotiation.proposedHours?.toString() || "",
+                                                  proposedDays: negotiation.proposedDays?.toString() || "",
+                                                  proposedDate: negotiation.proposedDate ? 
+                                                    new Date(negotiation.proposedDate).toISOString().split('T')[0] : "",
+                                                  proposedTime: negotiation.proposedDate ? 
+                                                    new Date(negotiation.proposedDate).toTimeString().slice(0, 5) : "",
+                                                  message: "",
+                                                });
+                                              }}
+                                              className="border-blue-300 text-blue-600 hover:bg-blue-50"
+                                            >
+                                              <MessageCircle className="w-3 h-3 mr-1" />
+                                              Contraproposta
+                                            </Button>
+                                          </DialogTrigger>
+                                          <DialogContent className="sm:max-w-md">
+                                            <DialogHeader>
+                                              <DialogTitle>Fazer Contraproposta</DialogTitle>
+                                              <DialogDescription>
+                                                Envie uma contraproposta para o cliente com seus termos.
+                                              </DialogDescription>
+                                            </DialogHeader>
+                                            <Form {...counterProposalForm}>
+                                              <form onSubmit={counterProposalForm.handleSubmit(handleCounterProposal)} className="space-y-4">
+                                                <FormField
+                                                  control={counterProposalForm.control}
+                                                  name="pricingType"
+                                                  render={({ field }) => (
+                                                    <FormItem>
+                                                      <FormLabel>Tipo de Cobrança</FormLabel>
+                                                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                        <FormControl>
+                                                          <SelectTrigger>
+                                                            <SelectValue />
+                                                          </SelectTrigger>
+                                                        </FormControl>
+                                                        <SelectContent>
+                                                          {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('hourly') && (
+                                                            <SelectItem value="hourly">Por Hora</SelectItem>
+                                                          )}
+                                                          {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('daily') && (
+                                                            <SelectItem value="daily">Por Dia</SelectItem>
+                                                          )}
+                                                          {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('fixed') && (
+                                                            <SelectItem value="fixed">Valor Fixo</SelectItem>
+                                                          )}
+                                                        </SelectContent>
+                                                      </Select>
+                                                      <FormMessage />
+                                                    </FormItem>
+                                                  )}
+                                                />
+
+                                                {counterProposalForm.watch('pricingType') === 'hourly' && (
+                                                  <FormField
+                                                    control={counterProposalForm.control}
+                                                    name="proposedHours"
+                                                    render={({ field }) => (
+                                                      <FormItem>
+                                                        <FormLabel>Horas Estimadas</FormLabel>
+                                                        <FormControl>
+                                                          <Input type="number" placeholder="Ex: 8" {...field} />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                      </FormItem>
+                                                    )}
+                                                  />
+                                                )}
+
+                                                {counterProposalForm.watch('pricingType') === 'daily' && (
+                                                  <FormField
+                                                    control={counterProposalForm.control}
+                                                    name="proposedDays"
+                                                    render={({ field }) => (
+                                                      <FormItem>
+                                                        <FormLabel>Dias Estimados</FormLabel>
+                                                        <FormControl>
+                                                          <Input type="number" placeholder="Ex: 2" {...field} />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                      </FormItem>
+                                                    )}
+                                                  />
+                                                )}
+
+                                                <FormField
+                                                  control={counterProposalForm.control}
+                                                  name="proposedPrice"
+                                                  render={({ field }) => (
+                                                    <FormItem>
+                                                      <FormLabel>Valor Proposto (R$)</FormLabel>
+                                                      <FormControl>
+                                                        <Input type="number" step="0.01" placeholder="Ex: 150.00" {...field} />
+                                                      </FormControl>
+                                                      <FormMessage />
+                                                    </FormItem>
+                                                  )}
+                                                />
+
+                                                <FormField
+                                                  control={counterProposalForm.control}
+                                                  name="proposedDate"
+                                                  render={({ field }) => (
+                                                    <FormItem>
+                                                      <FormLabel>Data Proposta</FormLabel>
+                                                      <FormControl>
+                                                        <Input type="date" {...field} />
+                                                      </FormControl>
+                                                      <FormMessage />
+                                                    </FormItem>
+                                                  )}
+                                                />
+
+                                                <FormField
+                                                  control={counterProposalForm.control}
+                                                  name="proposedTime"
+                                                  render={({ field }) => (
+                                                    <FormItem>
+                                                      <FormLabel>Horário Proposto</FormLabel>
+                                                      <FormControl>
+                                                        <Input type="time" {...field} />
+                                                      </FormControl>
+                                                      <FormMessage />
+                                                    </FormItem>
+                                                  )}
+                                                />
+
+                                                <FormField
+                                                  control={counterProposalForm.control}
+                                                  name="message"
+                                                  render={({ field }) => (
+                                                    <FormItem>
+                                                      <FormLabel>Mensagem</FormLabel>
+                                                      <FormControl>
+                                                        <Textarea 
+                                                          placeholder="Explique sua proposta..."
+                                                          rows={3}
+                                                          {...field} 
+                                                        />
+                                                      </FormControl>
+                                                      <FormMessage />
+                                                    </FormItem>
+                                                  )}
+                                                />
+
+                                                <div className="flex gap-2">
+                                                  <Button 
+                                                    type="submit" 
+                                                    disabled={createNegotiationMutation.isPending}
+                                                    className="bg-blue-600 hover:bg-blue-700"
+                                                  >
+                                                    {createNegotiationMutation.isPending ? "Enviando..." : "Enviar Proposta"}
+                                                  </Button>
+                                                </div>
+                                              </form>
+                                            </Form>
+                                          </DialogContent>
+                                        </Dialog>
+                                      </div>
+                                    )}
+
+                                    {/* Show effective status for all negotiations */}
+                                    {(() => {
+                                      const effectiveStatus = getEffectiveNegotiationStatus(request, negotiation);
+                                      
+                                      if (effectiveStatus === 'pending') {
+                                        if (negotiation.proposer.id === user?.id) {
+                                          // User's own pending proposal
+                                          return (
+                                            <div className="ml-4">
+                                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                                <Clock className="w-3 h-3 mr-1" />
+                                                Aguardando resposta
+                                              </span>
+                                            </div>
+                                          );
+                                        } else {
+                                          // Client's pending proposal (can have actions)
+                                          return null; // Will show action buttons
+                                        }
+                                      } else if (effectiveStatus === 'rejected') {
+                                        // Show rejected badge for proposals that were superseded
+                                        return (
+                                          <Badge className="bg-red-100 text-red-800">
+                                            Recusado
+                                          </Badge>
+                                        );
+                                      } else if (effectiveStatus === 'accepted') {
+                                        return (
+                                          <Badge className="bg-green-100 text-green-800">
+                                            Aceito
+                                          </Badge>
+                                        );
+                                      }
+                                      
+                                      return null;
+                                    })()}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {new Date(negotiation.createdAt).toLocaleDateString('pt-BR')} às {new Date(negotiation.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         
                         {request.status === 'pending' && (
                           <div className="flex gap-2">
@@ -753,7 +1253,19 @@ export default function ProviderDashboard() {
                                   variant="outline"
                                   onClick={() => {
                                     setCounterProposalRequestId(request.id);
-                                    counterProposalForm.reset();
+                                    setOriginalRequestData(request); // Store original request data
+                                    // Pre-fill form with current request data
+                                    counterProposalForm.reset({
+                                      pricingType: request.pricingType as 'hourly' | 'daily' | 'fixed',
+                                      proposedPrice: request.proposedPrice || "",
+                                      proposedHours: request.proposedHours?.toString() || "",
+                                      proposedDays: request.proposedDays?.toString() || "",
+                                      proposedDate: request.scheduledDate ? 
+                                        new Date(request.scheduledDate).toISOString().split('T')[0] : "",
+                                      proposedTime: request.scheduledDate ? 
+                                        new Date(request.scheduledDate).toTimeString().slice(0, 5) : "",
+                                      message: "",
+                                    });
                                   }}
                                   className="bg-blue-600 hover:bg-blue-700 text-white"
                                 >
@@ -955,88 +1467,11 @@ export default function ProviderDashboard() {
                           </AlertDialog>
                         )}
                         
-                        {request.status === 'completed' && (
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => {
-                                  setReviewRequestId(request.id);
-                                  setRevieweeId(request.client?.id || '');
-                                  reviewForm.reset();
-                                }}
-                                className="bg-yellow-600 hover:bg-yellow-700 text-white"
-                              >
-                                <Star className="w-4 h-4 mr-2" />
-                                Avaliar Cliente
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-md">
-                              <DialogHeader>
-                                <DialogTitle>Avaliar Cliente</DialogTitle>
-                                <DialogDescription>
-                                  Compartilhe sua experiência com este cliente
-                                </DialogDescription>
-                              </DialogHeader>
-                              <Form {...reviewForm}>
-                                <form onSubmit={reviewForm.handleSubmit((data) => createReviewMutation.mutate(data))} className="space-y-4">
-                                  <FormField
-                                    control={reviewForm.control}
-                                    name="rating"
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormLabel>Avaliação</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                          <FormControl>
-                                            <SelectTrigger>
-                                              <SelectValue placeholder="Selecione uma avaliação" />
-                                            </SelectTrigger>
-                                          </FormControl>
-                                          <SelectContent>
-                                            <SelectItem value="1">1 - Muito Ruim</SelectItem>
-                                            <SelectItem value="2">2 - Ruim</SelectItem>
-                                            <SelectItem value="3">3 - Regular</SelectItem>
-                                            <SelectItem value="4">4 - Bom</SelectItem>
-                                            <SelectItem value="5">5 - Excelente</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-
-                                  <FormField
-                                    control={reviewForm.control}
-                                    name="comment"
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormLabel>Comentário</FormLabel>
-                                        <FormControl>
-                                          <Textarea 
-                                            placeholder="Conte como foi trabalhar com este cliente..."
-                                            rows={3}
-                                            {...field} 
-                                          />
-                                        </FormControl>
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-
-                                  <div className="flex gap-2">
-                                    <Button 
-                                      type="submit" 
-                                      disabled={createReviewMutation.isPending}
-                                      className="bg-yellow-600 hover:bg-yellow-700"
-                                    >
-                                      {createReviewMutation.isPending ? "Enviando..." : "Enviar Avaliação"}
-                                    </Button>
-                                  </div>
-                                </form>
-                              </Form>
-                            </DialogContent>
-                          </Dialog>
+                                                {request.status === 'completed' && (
+                          <ClientReviewButton
+                            requestId={request.id}
+                            onOpenReview={() => handleOpenClientReviewDialog(request)}
+                          />
                         )}
                       </div>
                     ))}
@@ -1256,7 +1691,7 @@ export default function ProviderDashboard() {
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="text-gray-600">Taxa de Aceitação</span>
                     <span className="font-semibold">
-                      {requests.length > 0 
+                      {Array.isArray(requests) && requests.length > 0 
                         ? `${((requests.filter(r => r.status !== 'cancelled').length / requests.length) * 100).toFixed(1)}%`
                         : "N/A"
                       }
@@ -1278,6 +1713,17 @@ export default function ProviderDashboard() {
           </TabsContent>
         </Tabs>
       </div>
+      
+      {/* Client Review Dialog */}
+      {selectedRequestForClientReview && (
+        <ClientReviewDialog
+          requestId={selectedRequestForClientReview.id}
+          clientId={selectedRequestForClientReview.client.id}
+          clientName={selectedRequestForClientReview.client.name}
+          isOpen={clientReviewDialogOpen}
+          onOpenChange={setClientReviewDialogOpen}
+        />
+      )}
       
       <Footer />
     </div>

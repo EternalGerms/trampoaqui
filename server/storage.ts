@@ -68,6 +68,7 @@ export interface IStorage {
   // Review operations
   getReviewsByProvider(providerId: string): Promise<Review[]>;
   createReview(review: InsertReview): Promise<Review>;
+  getReviewByRequest(requestId: string): Promise<Review | undefined>;
   
   // Message operations
   getMessagesByRequest(requestId: string): Promise<Message[]>;
@@ -354,6 +355,8 @@ export class DatabaseStorage implements IStorage {
     client: User;
     negotiations: (Negotiation & { proposer: User })[];
   })[]> {
+    console.log(`[Storage] Fetching requests for provider: ${providerId}`);
+    
     const result = await db
       .select({
         request: serviceRequests,
@@ -364,6 +367,8 @@ export class DatabaseStorage implements IStorage {
       .where(eq(serviceRequests.providerId, providerId))
       .orderBy(desc(serviceRequests.createdAt));
 
+    console.log(`[Storage] Found ${result.length} requests for provider`);
+
     const requests = result.map(row => ({
       ...row.request,
       client: row.client!,
@@ -372,6 +377,8 @@ export class DatabaseStorage implements IStorage {
     // Fetch negotiations for each request
     const requestsWithNegotiations = [];
     for (const request of requests) {
+      console.log(`[Storage] Fetching negotiations for request: ${request.id}`);
+      
       const negotiationResults = await db
         .select({
           negotiation: negotiations,
@@ -381,6 +388,8 @@ export class DatabaseStorage implements IStorage {
         .leftJoin(users, eq(negotiations.proposerId, users.id))
         .where(eq(negotiations.requestId, request.id))
         .orderBy(desc(negotiations.createdAt));
+
+      console.log(`[Storage] Found ${negotiationResults.length} negotiations for request ${request.id}`);
 
       const requestWithNegotiations = {
         ...request,
@@ -393,6 +402,7 @@ export class DatabaseStorage implements IStorage {
       requestsWithNegotiations.push(requestWithNegotiations);
     }
 
+    console.log(`[Storage] Returning ${requestsWithNegotiations.length} requests with negotiations`);
     return requestsWithNegotiations;
   }
 
@@ -433,6 +443,15 @@ export class DatabaseStorage implements IStorage {
       .values(review)
       .returning();
     return newReview;
+  }
+
+  async getReviewByRequest(requestId: string): Promise<Review | undefined> {
+    const [review] = await db
+      .select()
+      .from(reviews)
+      .where(eq(reviews.requestId, requestId))
+      .limit(1);
+    return review || undefined;
   }
 
   async getMessagesByRequest(requestId: string): Promise<Message[]> {

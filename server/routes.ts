@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { insertUserSchema, insertServiceProviderSchema, insertServiceRequestSchema, updateServiceRequestSchema, insertMessageSchema, insertReviewSchema, insertNegotiationSchema, updateProviderProfileSchema } from "@shared/schema";
+import { z } from "zod";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 
@@ -30,12 +31,21 @@ const authenticateToken = (req: Request, res: Response, next: Function) => {
     return res.status(401).json({ message: 'Access token required' });
   }
 
-  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+  jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
     if (err) {
       return res.status(403).json({ message: 'Invalid token' });
     }
-    req.user = user;
-    next();
+    
+    // Ensure the decoded token has the expected structure
+    if (decoded && decoded.userId) {
+      req.user = {
+        userId: decoded.userId,
+        isProviderEnabled: decoded.isProviderEnabled || false
+      };
+      next();
+    } else {
+      return res.status(403).json({ message: 'Invalid token structure' });
+    }
   });
 };
 
@@ -603,6 +613,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get reviews by provider
+  app.get("/api/reviews/provider/:providerId", async (req: Request, res: Response) => {
+    try {
+      const reviews = await storage.getReviewsByProvider(req.params.providerId);
+      res.json(reviews);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Check if a service request has been reviewed
+  app.get("/api/reviews/request/:requestId", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const review = await storage.getReviewByRequest(req.params.requestId);
+      res.json({ hasReview: !!review, review });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // Messages routes
   app.get("/api/messages/conversation/:userId", authenticateToken, async (req: Request, res: Response) => {
     try {
@@ -715,13 +745,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create counter proposal endpoint
   app.post("/api/negotiations/:id/counter-proposal", authenticateToken, async (req: Request, res: Response) => {
     try {
-      const { pricingType, proposedPrice, proposedHours, proposedDays, proposedDate, message } = req.body;
-      
-      // Get the current negotiation
+      // Get the current negotiation first
       const currentNegotiation = await storage.getNegotiationById(req.params.id);
       if (!currentNegotiation) {
         return res.status(404).json({ message: "Negotiation not found" });
       }
+      
+      // Create a schema for counter proposal data (without requestId and proposerId)
+      const counterProposalSchema = z.object({
+        pricingType: z.enum(['hourly', 'daily', 'fixed']),
+        proposedPrice: z.union([z.string(), z.number()]).optional().transform((val) => {
+          if (typeof val === 'string') {
+            return val === '' ? undefined : val;
+          }
+          return val?.toString();
+        }),
+        proposedHours: z.union([z.string(), z.number()]).optional().transform((val) => {
+          if (typeof val === 'string') {
+            return val === '' ? undefined : parseInt(val, 10);
+          }
+          return val;
+        }),
+        proposedDays: z.union([z.string(), z.number()]).optional().transform((val) => {
+          if (typeof val === 'string') {
+            return val === '' ? undefined : parseInt(val, 10);
+          }
+          return val;
+        }),
+        proposedDate: z.union([z.date(), z.string()]).optional().transform((val) => {
+          if (typeof val === 'string') {
+            return new Date(val);
+          }
+          return val;
+        }),
+        message: z.string().min(1, "Message is required"),
+      });
+
+      // Validate and transform the request body using the counter proposal schema
+      const validatedData = counterProposalSchema.parse({
+        pricingType: req.body.pricingType,
+        proposedPrice: req.body.proposedPrice,
+        proposedHours: req.body.proposedHours,
+        proposedDays: req.body.proposedDays,
+        proposedDate: req.body.proposedDate,
+        message: req.body.message,
+      });
       
       // Check if user is authorized to respond to this negotiation
       const request = await storage.getServiceRequest(currentNegotiation.requestId);
@@ -743,23 +811,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Validate required fields
-      if (!pricingType || !message) {
+      if (!validatedData.pricingType || !validatedData.message) {
         return res.status(400).json({ message: "pricingType and message are required" });
       }
       
       // Create a new negotiation as a counter proposal
-      const counterNegotiationData = {
-        requestId: currentNegotiation.requestId,
-        pricingType,
-        proposedPrice,
-        proposedHours,
-        proposedDays,
-        proposedDate,
-        message: message || "Contraproposta",
-      };
-      
       const counterNegotiation = await storage.createNegotiation({
-        ...counterNegotiationData,
+        ...validatedData,
+        requestId: currentNegotiation.requestId,
         proposerId: req.user!.userId,
       });
       

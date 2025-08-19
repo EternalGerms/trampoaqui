@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { authManager } from "@/lib/auth";
@@ -9,9 +9,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
+import ReviewDialog from "@/components/review-dialog";
+import ReviewButton from "@/components/review-button";
 import { 
   User, 
   Briefcase, 
@@ -24,7 +34,9 @@ import {
   Clock,
   DollarSign,
   Check,
-  X
+  X,
+  MessageCircle,
+  CheckCircle
 } from "lucide-react";
 
 interface ServiceRequest {
@@ -66,12 +78,43 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const currentUser = authManager.getUser();
+  const [counterProposalRequestId, setCounterProposalRequestId] = useState<string | null>(null);
+  const [counterProposalNegotiationId, setCounterProposalNegotiationId] = useState<string | null>(null);
+  const [originalNegotiationData, setOriginalNegotiationData] = useState<any>(null);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [selectedRequestForReview, setSelectedRequestForReview] = useState<ServiceRequest | null>(null);
+
+  // Counter proposal schema
+  const counterProposalSchema = z.object({
+    pricingType: z.enum(['hourly', 'daily', 'fixed']),
+    proposedPrice: z.string().optional(),
+    proposedHours: z.string().optional(),
+    proposedDays: z.string().optional(),
+    proposedDate: z.string().optional(),
+    proposedTime: z.string().optional(),
+    message: z.string().min(10, "Mensagem deve ter pelo menos 10 caracteres"),
+  });
+
+  const counterProposalForm = useForm<z.infer<typeof counterProposalSchema>>({
+    resolver: zodResolver(counterProposalSchema),
+    defaultValues: {
+      pricingType: "fixed",
+      proposedPrice: "",
+      proposedHours: "",
+      proposedDays: "",
+      proposedDate: "",
+      proposedTime: "",
+      message: "",
+    },
+  });
 
   // Get user's service requests
   const { data: requests = [], isLoading: requestsLoading } = useQuery<ServiceRequest[]>({
     queryKey: ["/api/requests"],
     enabled: !!currentUser,
   });
+
+
 
   // Enable provider capability mutation
   const enableProviderMutation = useMutation({
@@ -122,26 +165,194 @@ export default function Dashboard() {
     },
   });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'negotiating': return 'bg-orange-100 text-orange-800';
-      case 'accepted': return 'bg-blue-100 text-blue-800';
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+  // Create counter proposal mutation
+  const createCounterProposalMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof counterProposalSchema>) => {
+      // Convert date and time fields to proper Date object
+      const proposalData = {
+        ...data,
+        proposedDate: data.proposedDate && data.proposedTime ? 
+          new Date(`${data.proposedDate}T${data.proposedTime}:00`) : 
+          data.proposedDate ? new Date(data.proposedDate) : undefined,
+        proposedHours: data.proposedHours ? parseInt(data.proposedHours) : undefined,
+        proposedDays: data.proposedDays ? parseInt(data.proposedDays) : undefined,
+        proposedPrice: data.proposedPrice || undefined,
+      };
+
+      const response = await apiRequest('POST', `/api/negotiations/${counterProposalNegotiationId}/counter-proposal`, proposalData);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Contraproposta enviada!",
+        description: "O prestador foi notificado sobre sua proposta.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
+      setCounterProposalRequestId(null);
+      setCounterProposalNegotiationId(null);
+      setOriginalNegotiationData(null);
+      counterProposalForm.reset();
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao enviar contraproposta",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const getStatusColor = (status: string) =>
+    status === 'completed' ? 'bg-green-100 text-green-800' :
+    status === 'accepted' ? 'bg-blue-100 text-blue-800' :
+    status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+    status === 'negotiating' ? 'bg-blue-100 text-blue-800' :
+    status === 'cancelled' ? 'bg-red-100 text-red-800' :
+    'bg-gray-100 text-gray-800';
+
+  const getStatusText = (status: string) =>
+    status === 'completed' ? 'Concluído' :
+    status === 'accepted' ? 'Aceito' :
+    status === 'pending' ? 'Pendente' :
+    status === 'negotiating' ? 'Negociando' :
+    status === 'cancelled' ? 'Cancelado' :
+    status;
+
+  // Function to check if service date has passed
+  const checkServiceDate = (request: ServiceRequest) => {
+    if (!request.scheduledDate) return false;
+    const serviceDate = new Date(request.scheduledDate);
+    const now = new Date();
+    return now < serviceDate;
+  };
+
+  // Function to handle request status updates
+  const handleUpdateRequestStatus = async (requestId: string, status: string) => {
+    try {
+      const response = await apiRequest('PUT', `/api/requests/${requestId}`, { status });
+      if (response.ok) {
+        toast({
+          title: "Status atualizado!",
+          description: "O status da solicitação foi alterado com sucesso.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
+      }
+    } catch (error) {
+      toast({
+        title: "Erro ao atualizar status",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
     }
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'pending': return 'Pendente';
-      case 'negotiating': return 'Negociando';
-      case 'accepted': return 'Aceito';
-      case 'completed': return 'Concluído';
-      case 'cancelled': return 'Cancelado';
-      default: return status;
+  // Function to open review dialog
+  const handleOpenReviewDialog = (request: ServiceRequest) => {
+    setSelectedRequestForReview(request);
+    setReviewDialogOpen(true);
+  };
+
+  // Auto-redirect to provider dashboard if user has provider features enabled
+  useEffect(() => {
+    if (currentUser?.isProviderEnabled) {
+      setLocation('/provider-dashboard');
     }
+  }, [currentUser?.isProviderEnabled, setLocation]);
+
+  // Function to get the effective status of a negotiation for the client
+  // This handles the logic for showing "Recusado" vs "Aguardando resposta"
+  const getEffectiveNegotiationStatus = (request: ServiceRequest, negotiation: any) => {
+    // If negotiation is already accepted/rejected, return that status
+    if (negotiation.status !== 'pending') {
+      return negotiation.status;
+    }
+
+    // Safety check for negotiations array
+    if (!request.negotiations || request.negotiations.length === 0) {
+      return 'pending';
+    }
+
+    // Find the most recent negotiation (regardless of status)
+    const allNegotiations = request.negotiations
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    if (allNegotiations.length === 0) return 'pending';
+    
+    const mostRecentNegotiation = allNegotiations[0];
+    
+    // If this is the most recent negotiation
+    if (negotiation.id === mostRecentNegotiation.id) {
+      return 'pending'; // Can have actions or show "Aguardando resposta"
+    }
+    
+    // If this is an older negotiation, it should be marked as "Recusado"
+    // because a newer proposal has been made or the most recent was acted upon
+    return 'rejected';
+  };
+
+  // Function to get the effective request status
+  // This determines if a request should show "Negociando" or "Cancelado"
+  const getEffectiveRequestStatus = (request: ServiceRequest) => {
+    // If request is already completed, accepted, or cancelled, return that status
+    if (['completed', 'accepted', 'cancelled'].includes(request.status)) {
+      return request.status;
+    }
+
+    // If request is pending and has no negotiations, return pending
+    if (request.status === 'pending' && (!request.negotiations || request.negotiations.length === 0)) {
+      return 'pending';
+    }
+
+    // If request is negotiating, check if all negotiations are rejected
+    if (request.status === 'negotiating' && request.negotiations && request.negotiations.length > 0) {
+      const allNegotiations = request.negotiations
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      const mostRecentNegotiation = allNegotiations[0];
+      
+      // If the most recent negotiation was rejected, the request should be cancelled
+      if (mostRecentNegotiation.status === 'rejected') {
+        return 'cancelled';
+      }
+      
+      // If the most recent negotiation was accepted, the request should be accepted
+      if (mostRecentNegotiation.status === 'accepted') {
+        return 'accepted';
+      }
+      
+      // If the most recent negotiation is still pending, keep negotiating
+      if (mostRecentNegotiation.status === 'pending') {
+        return 'negotiating';
+      }
+    }
+
+    return request.status;
+  };
+
+  const handleCounterProposal = (data: z.infer<typeof counterProposalSchema>) => {
+    if (!counterProposalNegotiationId || !originalNegotiationData) return;
+    
+    // Check if any field has changed from the original negotiation
+    const hasChanges = 
+      data.pricingType !== originalNegotiationData.pricingType ||
+      data.proposedPrice !== (originalNegotiationData.proposedPrice || "") ||
+      data.proposedHours !== (originalNegotiationData.proposedHours?.toString() || "") ||
+      data.proposedDays !== (originalNegotiationData.proposedDays?.toString() || "") ||
+      data.proposedDate !== (originalNegotiationData.proposedDate ? 
+        new Date(originalNegotiationData.proposedDate).toISOString().split('T')[0] : "") ||
+      data.proposedTime !== (originalNegotiationData.proposedDate ? 
+        new Date(originalNegotiationData.proposedDate).toTimeString().slice(0, 5) : "");
+    
+    if (!hasChanges) {
+      toast({
+        title: "Nenhuma alteração detectada",
+        description: "Você deve alterar pelo menos um campo para enviar uma contraproposta.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    createCounterProposalMutation.mutate(data);
   };
 
   if (!currentUser) {
@@ -201,8 +412,8 @@ export default function Dashboard() {
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
                                 <h3 className="font-semibold text-gray-900">{request.title}</h3>
-                                <Badge className={getStatusColor(request.status)}>
-                                  {getStatusText(request.status)}
+                                <Badge className={getStatusColor(getEffectiveRequestStatus(request))}>
+                                  {getStatusText(getEffectiveRequestStatus(request))}
                                 </Badge>
                               </div>
                               <p className="text-gray-600 text-sm mb-3">{request.description}</p>
@@ -267,7 +478,7 @@ export default function Dashboard() {
                                               )}
                                             </div>
                                           </div>
-                                          {negotiation.status === 'pending' && (
+                                          {negotiation.status === 'pending' && negotiation.proposer.id !== currentUser?.id && (
                                             <div className="flex gap-2 ml-4">
                                               <Button
                                                 size="sm"
@@ -294,13 +505,210 @@ export default function Dashboard() {
                                                 <X className="w-3 h-3 mr-1" />
                                                 Recusar
                                               </Button>
+                                              <Dialog>
+                                                <DialogTrigger asChild>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => {
+                                                      setCounterProposalRequestId(request.id);
+                                                      setCounterProposalNegotiationId(negotiation.id);
+                                                      setOriginalNegotiationData(negotiation);
+                                                      // Pre-fill form with current negotiation data
+                                                      counterProposalForm.reset({
+                                                        pricingType: negotiation.pricingType as 'hourly' | 'daily' | 'fixed',
+                                                        proposedPrice: negotiation.proposedPrice || "",
+                                                        proposedHours: negotiation.proposedHours?.toString() || "",
+                                                        proposedDays: negotiation.proposedDays?.toString() || "",
+                                                        proposedDate: negotiation.proposedDate ? 
+                                                          new Date(negotiation.proposedDate).toISOString().split('T')[0] : "",
+                                                        proposedTime: negotiation.proposedDate ? 
+                                                          new Date(negotiation.proposedDate).toTimeString().slice(0, 5) : "",
+                                                        message: "",
+                                                      });
+                                                    }}
+                                                    className="border-blue-300 text-blue-600 hover:bg-blue-50"
+                                                  >
+                                                    <MessageCircle className="w-3 h-3 mr-1" />
+                                                    Contraproposta
+                                                  </Button>
+                                                </DialogTrigger>
+                                                <DialogContent className="sm:max-w-md">
+                                                  <DialogHeader>
+                                                    <DialogTitle>Fazer Contraproposta</DialogTitle>
+                                                    <DialogDescription>
+                                                      Envie uma contraproposta para o prestador com seus termos.
+                                                    </DialogDescription>
+                                                  </DialogHeader>
+                                                  <Form {...counterProposalForm}>
+                                                    <form onSubmit={counterProposalForm.handleSubmit(handleCounterProposal)} className="space-y-4">
+                                                      <FormField
+                                                        control={counterProposalForm.control}
+                                                        name="pricingType"
+                                                        render={({ field }) => (
+                                                          <FormItem>
+                                                            <FormLabel>Tipo de Cobrança</FormLabel>
+                                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                              <FormControl>
+                                                                <SelectTrigger>
+                                                                  <SelectValue />
+                                                                </SelectTrigger>
+                                                              </FormControl>
+                                                              <SelectContent>
+                                                                <SelectItem value="hourly">Por Hora</SelectItem>
+                                                                <SelectItem value="daily">Por Dia</SelectItem>
+                                                                <SelectItem value="fixed">Valor Fixo</SelectItem>
+                                                              </SelectContent>
+                                                            </Select>
+                                                            <FormMessage />
+                                                          </FormItem>
+                                                        )}
+                                                      />
+
+                                                      {counterProposalForm.watch('pricingType') === 'hourly' && (
+                                                        <FormField
+                                                          control={counterProposalForm.control}
+                                                          name="proposedHours"
+                                                          render={({ field }) => (
+                                                            <FormItem>
+                                                              <FormLabel>Horas Estimadas</FormLabel>
+                                                              <FormControl>
+                                                                <Input type="number" placeholder="Ex: 8" {...field} />
+                                                              </FormControl>
+                                                              <FormMessage />
+                                                            </FormItem>
+                                                          )}
+                                                        />
+                                                      )}
+
+                                                      {counterProposalForm.watch('pricingType') === 'daily' && (
+                                                        <FormField
+                                                          control={counterProposalForm.control}
+                                                          name="proposedDays"
+                                                          render={({ field }) => (
+                                                            <FormItem>
+                                                              <FormLabel>Dias Estimados</FormLabel>
+                                                              <FormControl>
+                                                                <Input type="number" placeholder="Ex: 2" {...field} />
+                                                              </FormControl>
+                                                              <FormMessage />
+                                                            </FormItem>
+                                                          )}
+                                                        />
+                                                      )}
+
+                                                      <FormField
+                                                        control={counterProposalForm.control}
+                                                        name="proposedPrice"
+                                                        render={({ field }) => (
+                                                          <FormItem>
+                                                            <FormLabel>Valor Proposto (R$)</FormLabel>
+                                                            <FormControl>
+                                                              <Input type="number" step="0.01" placeholder="Ex: 150.00" {...field} />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                          </FormItem>
+                                                        )}
+                                                      />
+
+                                                      <FormField
+                                                        control={counterProposalForm.control}
+                                                        name="proposedDate"
+                                                        render={({ field }) => (
+                                                          <FormItem>
+                                                            <FormLabel>Data Proposta</FormLabel>
+                                                            <FormControl>
+                                                              <Input type="date" {...field} />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                          </FormItem>
+                                                        )}
+                                                      />
+
+                                                      <FormField
+                                                        control={counterProposalForm.control}
+                                                        name="proposedTime"
+                                                        render={({ field }) => (
+                                                          <FormItem>
+                                                            <FormLabel>Horário Proposto</FormLabel>
+                                                            <FormControl>
+                                                              <Input type="time" {...field} />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                          </FormItem>
+                                                        )}
+                                                      />
+
+                                                      <FormField
+                                                        control={counterProposalForm.control}
+                                                        name="message"
+                                                        render={({ field }) => (
+                                                          <FormItem>
+                                                            <FormLabel>Mensagem</FormLabel>
+                                                            <FormControl>
+                                                              <Textarea 
+                                                                placeholder="Explique sua proposta..."
+                                                                rows={3}
+                                                                {...field} 
+                                                              />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                          </FormItem>
+                                                        )}
+                                                      />
+
+                                                      <div className="flex gap-2">
+                                                        <Button 
+                                                          type="submit" 
+                                                          disabled={createCounterProposalMutation.isPending}
+                                                          className="bg-blue-600 hover:bg-blue-700"
+                                                        >
+                                                          {createCounterProposalMutation.isPending ? "Enviando..." : "Enviar Proposta"}
+                                                        </Button>
+                                                      </div>
+                                                    </form>
+                                                  </Form>
+                                                </DialogContent>
+                                              </Dialog>
                                             </div>
                                           )}
-                                          {negotiation.status !== 'pending' && (
-                                            <Badge className={negotiation.status === 'accepted' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                                              {negotiation.status === 'accepted' ? 'Aceito' : 'Recusado'}
-                                            </Badge>
-                                          )}
+                                          
+                                          {/* Show effective status for all negotiations */}
+                                          {(() => {
+                                            const effectiveStatus = getEffectiveNegotiationStatus(request, negotiation);
+                                            
+                                            if (effectiveStatus === 'pending') {
+                                              if (negotiation.proposer.id === currentUser?.id) {
+                                                // User's own pending proposal
+                                                return (
+                                                  <div className="ml-4">
+                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                                      <Clock className="w-3 h-3 mr-1" />
+                                                      Aguardando resposta
+                                                    </span>
+                                                  </div>
+                                                );
+                                              } else {
+                                                // Provider's pending proposal (can have actions)
+                                                return null; // Will show action buttons
+                                              }
+                                            } else if (effectiveStatus === 'rejected') {
+                                              // Show rejected badge for proposals that were superseded
+                                              return (
+                                                <Badge className="bg-red-100 text-red-800">
+                                                  Recusado
+                                                </Badge>
+                                              );
+                                            } else if (effectiveStatus === 'accepted') {
+                                              return (
+                                                <Badge className="bg-green-100 text-green-800">
+                                                  Aceito
+                                                </Badge>
+                                              );
+                                            }
+                                            
+                                            return null;
+                                          })()}
                                         </div>
                                         <div className="text-xs text-gray-500">
                                           {new Date(negotiation.createdAt).toLocaleDateString('pt-BR')} às {new Date(negotiation.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -311,10 +719,57 @@ export default function Dashboard() {
                                 </div>
                               )}
                             </div>
-                            <Button variant="outline" size="sm">
-                              <MessageSquare className="w-4 h-4 mr-2" />
-                              Mensagens
-                            </Button>
+                            
+                            {/* Show completion button for accepted services */}
+                            {(request.status === 'accepted' || request.status === 'pending_completion') && (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button 
+                                    size="sm"
+                                    className="bg-blue-600 hover:bg-blue-700"
+                                  >
+                                    <CheckCircle className="w-4 h-4 mr-2" />
+                                    Marcar como Concluído
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Confirmar Conclusão do Serviço</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      {checkServiceDate(request) ? (
+                                        <>
+                                          Atenção: O serviço está agendado para <strong>{request.scheduledDate ? new Date(request.scheduledDate).toLocaleDateString('pt-BR') : ''}</strong>. 
+                                          Você está marcando como concluído antes da data/horário agendado. 
+                                          Tem certeza que deseja continuar?
+                                        </>
+                                      ) : (
+                                        <>
+                                          Você está prestes a marcar este serviço como concluído. 
+                                          O prestador também precisará confirmar a conclusão para que o serviço seja finalizado.
+                                        </>
+                                      )}
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                    <AlertDialogAction 
+                                      onClick={() => handleUpdateRequestStatus(request.id, 'completed')}
+                                      className="bg-blue-600 hover:bg-blue-700"
+                                    >
+                                      Confirmar Conclusão
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            )}
+
+                            {/* Show review button for completed services */}
+                            {request.status === 'completed' && (
+                              <ReviewButton
+                                requestId={request.id}
+                                onOpenReview={() => handleOpenReviewDialog(request)}
+                              />
+                            )}
                           </div>
                         </div>
                       ))}
@@ -411,10 +866,6 @@ export default function Dashboard() {
                         <Briefcase className="w-4 h-4 mr-2" />
                         Dashboard do Prestador
                       </Button>
-                      <Button variant="outline" onClick={() => setLocation('/complete-profile')}>
-                        <User className="w-4 h-4 mr-2" />
-                        Completar Perfil
-                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -423,6 +874,17 @@ export default function Dashboard() {
           </Tabs>
         </div>
       </main>
+      
+      {/* Review Dialog */}
+      {selectedRequestForReview && (
+        <ReviewDialog
+          requestId={selectedRequestForReview.id}
+          providerId={selectedRequestForReview.provider.user.id}
+          providerName={selectedRequestForReview.provider.user.name}
+          isOpen={reviewDialogOpen}
+          onOpenChange={setReviewDialogOpen}
+        />
+      )}
       
       <Footer />
     </div>
