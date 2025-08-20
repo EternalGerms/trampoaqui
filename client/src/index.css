@@ -1,5 +1,8 @@
+/* stylelint-disable-next-line at-rule-no-unknown */
 @tailwind base;
+/* stylelint-disable-next-line at-rule-no-unknown */
 @tailwind components;
+/* stylelint-disable-next-line at-rule-no-unknown */
 @tailwind utilities;
 
 :root {
@@ -66,10 +69,12 @@
 
 @layer base {
   * {
+    /* stylelint-disable-next-line at-rule-no-unknown */
     @apply border-border;
   }
 
   body {
+    /* stylelint-disable-next-line at-rule-no-unknown */
     @apply font-sans antialiased bg-background text-foreground;
     font-family: 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', sans-serif;
   }
@@ -77,14 +82,17 @@
 
 @layer components {
   .btn-primary {
+    /* stylelint-disable-next-line at-rule-no-unknown */
     @apply bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors;
   }
   
   .btn-secondary {
+    /* stylelint-disable-next-line at-rule-no-unknown */
     @apply border-2 border-blue-600 text-blue-600 hover:bg-blue-50 font-medium py-2 px-4 rounded-lg transition-colors;
   }
   
   .card-hover {
+    /* stylelint-disable-next-line at-rule-no-unknown */
     @apply hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer;
   }
   
@@ -134,5 +142,39 @@
   
   .bg-warning\/10 {
     background-color: hsl(35, 100%, 50%, 0.1);
+  }
+  
+  /* Line clamp utilities */
+  .line-clamp-1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    word-wrap: break-word;
+    word-break: break-word;
+    max-width: 100%;
+  }
+  
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    text-overflow: ellipsis;
+    word-wrap: break-word;
+    word-break: break-word;
+    max-width: 100%;
+  }
+  
+  .line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    text-overflow: ellipsis;
+    word-wrap: break-word;
+    word-break: break-word;
+    max-width: 100%;
   }
 }

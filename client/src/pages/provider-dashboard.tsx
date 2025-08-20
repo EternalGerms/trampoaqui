@@ -24,6 +24,7 @@ import {
   Settings, 
   BarChart3, 
   Clock,
+  
   CheckCircle,
   XCircle,
   AlertCircle,
@@ -45,7 +46,21 @@ import {
   insertServiceProviderSchema 
 } from "@shared/schema";
 
-const updateProviderSchema = insertServiceProviderSchema.omit({ userId: true });
+const updateProviderSchema = z.object({
+  bio: z.string().optional(),
+  experience: z.string().min(10, "Experiência deve ter pelo menos 10 caracteres"),
+  location: z.string().min(3, "Localização deve ter pelo menos 3 caracteres"),
+});
+
+const newServiceSchema = z.object({
+  categoryId: z.string().min(1, "Categoria é obrigatória"),
+  description: z.string().min(20, "Descrição deve ter pelo menos 20 caracteres"),
+  pricingTypes: z.array(z.enum(['hourly', 'daily', 'fixed'])).min(1, "Selecione pelo menos um tipo de preço"),
+  minHourlyRate: z.string().optional(),
+  minDailyRate: z.string().optional(),
+  minFixedRate: z.string().optional(),
+  location: z.string().min(3, "Localização deve ter pelo menos 3 caracteres"),
+});
 
 const counterProposalSchema = z.object({
   pricingType: z.enum(['hourly', 'daily', 'fixed']),
@@ -68,11 +83,12 @@ const reviewSchema = z.object({
 });
 
 type UpdateProviderForm = z.infer<typeof updateProviderSchema>;
+type NewServiceForm = z.infer<typeof newServiceSchema>;
 type CounterProposalForm = z.infer<typeof counterProposalSchema>;
 type ReviewForm = z.infer<typeof reviewSchema>;
 
 type ProviderWithDetails = ServiceProvider & { 
-  user: { id: string; name: string; email: string; phone?: string };
+  user: { id: string; name: string; email: string; phone?: string; bio?: string };
   category: ServiceCategory; 
   averageRating: number; 
   reviewCount: number 
@@ -115,6 +131,7 @@ export default function ProviderDashboard() {
   const [originalRequestData, setOriginalRequestData] = useState<any>(null);
   const [clientReviewDialogOpen, setClientReviewDialogOpen] = useState(false);
   const [selectedRequestForClientReview, setSelectedRequestForClientReview] = useState<RequestWithClient | null>(null);
+  const [showNewServiceForm, setShowNewServiceForm] = useState(false);
 
   const user = authManager.getUser();
 
@@ -166,16 +183,22 @@ export default function ProviderDashboard() {
   const form = useForm<UpdateProviderForm>({
     resolver: zodResolver(updateProviderSchema),
     defaultValues: {
-      categoryId: provider?.categoryId || "",
-      description: provider?.description || "",
-      pricingTypes: Array.isArray(provider?.pricingTypes) ? provider.pricingTypes : ["fixed"],
-      minHourlyRate: provider?.minHourlyRate || "",
-      minDailyRate: provider?.minDailyRate || "",
-      minFixedRate: provider?.minFixedRate || "",
+      bio: provider?.user?.bio || "",
       experience: provider?.experience || "",
       location: provider?.location || "",
-      isVerified: provider?.isVerified || false,
-      availability: provider?.availability || {},
+    },
+  });
+
+  const newServiceForm = useForm<NewServiceForm>({
+    resolver: zodResolver(newServiceSchema),
+    defaultValues: {
+      categoryId: "",
+      description: "",
+      pricingTypes: ["fixed"],
+      minHourlyRate: "",
+      minDailyRate: "",
+      minFixedRate: "",
+      location: provider?.location || "",
     },
   });
 
@@ -204,22 +227,17 @@ export default function ProviderDashboard() {
   useEffect(() => {
     if (provider) {
       form.reset({
-        categoryId: provider.categoryId,
-        description: provider.description,
-        pricingTypes: Array.isArray(provider.pricingTypes) ? provider.pricingTypes : ["fixed"],
-        minHourlyRate: provider.minHourlyRate || "",
-        minDailyRate: provider.minDailyRate || "",
-        minFixedRate: provider.minFixedRate || "",
+        bio: provider.user?.bio || "",
         experience: provider.experience || "",
-        location: provider.location,
-        availability: provider.availability || {},
+        location: provider.location || "",
       });
     }
   }, [provider, form]);
 
   const updateProviderMutation = useMutation({
     mutationFn: async (data: UpdateProviderForm) => {
-      const response = await authenticatedRequest('PUT', `/api/providers/${provider?.id}`, {
+      // Update user profile (bio, experience, location)
+      const response = await authenticatedRequest('PUT', `/api/users/profile`, {
         ...data,
         userId: user?.id,
       });
@@ -236,6 +254,32 @@ export default function ProviderDashboard() {
     onError: () => {
       toast({
         title: "Erro ao atualizar perfil",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createNewServiceMutation = useMutation({
+    mutationFn: async (data: NewServiceForm) => {
+      const response = await authenticatedRequest('POST', `/api/providers`, {
+        ...data,
+        userId: user?.id,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Novo serviço criado!",
+        description: "Seu serviço foi adicionado com sucesso.",
+      });
+      setShowNewServiceForm(false);
+      newServiceForm.reset();
+      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao criar serviço",
         description: "Tente novamente em alguns instantes.",
         variant: "destructive",
       });
@@ -461,36 +505,34 @@ export default function ProviderDashboard() {
     return request.status;
   };
 
-  // Redirect if not a provider (after all hooks)
-  if (!user || !user.isProviderEnabled) {
-    setLocation('/');
+  // Redirect if not logged in
+  if (!user) {
+    setLocation('/login');
     return null;
-  }
-
-  // Check if provider profile exists
-  if (!provider) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Card>
-            <CardContent className="text-center py-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Perfil de Profissional Não Encontrado</h2>
-              <p className="text-gray-600 mb-4">
-                Você precisa criar um perfil de profissional para acessar o dashboard.
-              </p>
-              <Button onClick={() => setLocation('/complete-profile')}>
-                Criar Perfil de Profissional
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
   }
 
   const handleUpdateProvider = (data: UpdateProviderForm) => {
     updateProviderMutation.mutate(data);
+  };
+
+  const handleCreateNewService = (data: NewServiceForm) => {
+    // Verificar se já existe um serviço na mesma categoria
+    const existingService = userProviders.find(p => p.categoryId === data.categoryId);
+    if (existingService) {
+      toast({
+        title: "Categoria já cadastrada",
+        description: "Você já possui um serviço nesta categoria. Escolha outra categoria.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    createNewServiceMutation.mutate(data);
+  };
+
+  const handleCancelNewService = () => {
+    setShowNewServiceForm(false);
+    newServiceForm.reset();
   };
 
   const handleUpdateRequestStatus = (requestId: string, status: string) => {
@@ -588,19 +630,105 @@ export default function ProviderDashboard() {
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard do Profissional</h1>
-          <p className="text-gray-600">Gerencie seus serviços e perfil</p>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600">Gerencie seus serviços e solicitações</p>
         </div>
 
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-            <TabsTrigger value="requests">Solicitações</TabsTrigger>
-            <TabsTrigger value="profile">Perfil</TabsTrigger>
-            <TabsTrigger value="analytics">Relatórios</TabsTrigger>
+        <Tabs defaultValue="client" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="client">Cliente</TabsTrigger>
+            <TabsTrigger value="professional">Profissional</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview">
+          {/* Aba Cliente */}
+          <TabsContent value="client">
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <User className="w-5 h-5" />
+                    Minhas Solicitações
+                  </CardTitle>
+                  <CardDescription>
+                    Acompanhe suas solicitações de serviço
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {requestsLoading ? (
+                    <div className="space-y-3">
+                      {[...Array(3)].map((_, i) => (
+                        <div key={i} className="animate-pulse">
+                          <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                          <div className="h-3 bg-gray-200 rounded"></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : requests.length > 0 ? (
+                    <div className="space-y-3">
+                      {requests.slice(0, 5).map((request) => (
+                        <div key={request.id} className="border border-gray-200 rounded-lg p-3">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">{request.title}</p>
+                              <p className="text-gray-600 text-xs">Profissional: {request.providerId || 'N/A'}</p>
+                            </div>
+                            {getStatusBadge(getEffectiveRequestStatus(request))}
+                          </div>
+                          <p className="text-gray-600 text-sm mb-2">{request.description}</p>
+                          <div className="flex justify-between items-center text-xs text-gray-500">
+                            <span>Solicitado em: {new Date(request.createdAt).toLocaleDateString('pt-BR')}</span>
+                            {request.proposedPrice && (
+                              <span className="text-green-600 font-medium">R$ {request.proposedPrice}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <MessageCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        Nenhuma solicitação ainda
+                      </h3>
+                      <p className="text-gray-600 mb-4">
+                        Você ainda não fez nenhuma solicitação de serviço.
+                      </p>
+                      <Button onClick={() => setLocation('/services')}>
+                        Buscar Serviços
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Aba Profissional */}
+          <TabsContent value="professional">
+            <div className="space-y-6">
+              {!provider ? (
+                <Card>
+                  <CardContent className="text-center py-12">
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Perfil de Profissional Não Encontrado</h2>
+                    <p className="text-gray-600 mb-4">
+                      Você precisa criar um perfil de profissional para acessar as funcionalidades de prestador de serviços.
+                    </p>
+                    <Button onClick={() => setLocation('/complete-profile')}>
+                      Criar Perfil de Profissional
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <Tabs defaultValue="overview" className="space-y-6">
+                    <TabsList className="grid w-full grid-cols-4">
+                      <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+                      <TabsTrigger value="requests">Solicitações</TabsTrigger>
+                      <TabsTrigger value="profile">Perfil</TabsTrigger>
+                      <TabsTrigger value="analytics">Relatórios</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="overview">
             <div className="grid lg:grid-cols-3 gap-6">
               {/* Profile Overview */}
               <Card>
@@ -663,42 +791,253 @@ export default function ProviderDashboard() {
                       <Briefcase className="w-5 h-5" />
                       Meus Serviços
                     </span>
-                    <Button 
-                      size="sm" 
-                      onClick={() => setLocation('/complete-profile')}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      + Novo
-                    </Button>
+                    {!showNewServiceForm && (
+                      <Button 
+                        size="sm" 
+                        onClick={() => setShowNewServiceForm(true)}
+                        className="bg-green-600 hover:bg-green-700"
+                        disabled={userProviders.length >= categories.length}
+                      >
+                        + Novo
+                      </Button>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {/* Formulário para novo serviço */}
+                  {showNewServiceForm && (
+                    <div className="border border-blue-200 rounded-lg p-4 mb-4 bg-blue-50">
+                      <h4 className="font-medium text-blue-900 mb-3">Adicionar Novo Serviço</h4>
+                      <Form {...newServiceForm}>
+                        <form onSubmit={newServiceForm.handleSubmit(handleCreateNewService)} className="space-y-4">
+                          <FormField
+                            control={newServiceForm.control}
+                            name="categoryId"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Categoria de Serviço</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Selecione uma categoria" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {categories
+                                      .filter(category => !userProviders.some(p => p.categoryId === category.id))
+                                      .map((category) => (
+                                        <SelectItem key={category.id} value={category.id}>
+                                          {category.name}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={newServiceForm.control}
+                            name="description"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Descrição dos Serviços</FormLabel>
+                                <FormControl>
+                                  <Textarea 
+                                    placeholder="Descreva seus serviços e especialidades nesta categoria..."
+                                    rows={3}
+                                    {...field} 
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={newServiceForm.control}
+                            name="pricingTypes"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Tipos de Preço</FormLabel>
+                                <div className="flex gap-3">
+                                  {(['hourly', 'daily', 'fixed'] as const).map((type) => (
+                                    <div key={type} className="flex items-center space-x-2">
+                                      <input
+                                        type="checkbox"
+                                        id={type}
+                                        checked={field.value.includes(type)}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            field.onChange([...field.value, type]);
+                                          } else {
+                                            field.onChange(field.value.filter(t => t !== type));
+                                          }
+                                        }}
+                                        className="rounded border-gray-300"
+                                      />
+                                      <label htmlFor={type} className="text-sm">
+                                        {type === 'hourly' ? 'Por Hora' : type === 'daily' ? 'Por Dia' : 'Valor Fixo'}
+                                      </label>
+                                    </div>
+                                  ))}
+                                </div>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <div className="grid md:grid-cols-3 gap-4">
+                            {newServiceForm.watch('pricingTypes').includes('hourly') && (
+                              <FormField
+                                control={newServiceForm.control}
+                                name="minHourlyRate"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Valor por Hora (R$)</FormLabel>
+                                    <FormControl>
+                                      <Input 
+                                        type="number" 
+                                        placeholder="80.00" 
+                                        step="0.01"
+                                        {...field} 
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+
+                            {newServiceForm.watch('pricingTypes').includes('daily') && (
+                              <FormField
+                                control={newServiceForm.control}
+                                name="minDailyRate"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Valor por Dia (R$)</FormLabel>
+                                    <FormControl>
+                                      <Input 
+                                        type="number" 
+                                        placeholder="400.00" 
+                                        step="0.01"
+                                        {...field} 
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+
+                            {newServiceForm.watch('pricingTypes').includes('fixed') && (
+                              <FormField
+                                control={newServiceForm.control}
+                                name="minFixedRate"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Valor Fixo (R$)</FormLabel>
+                                    <FormControl>
+                                      <Input 
+                                        type="number" 
+                                        placeholder="150.00" 
+                                        step="0.01"
+                                        {...field} 
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+                          </div>
+
+                          <FormField
+                            control={newServiceForm.control}
+                            name="location"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Localização</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="Cidade/Bairro onde atende" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <div className="flex gap-2">
+                            <Button 
+                              type="submit" 
+                              disabled={createNewServiceMutation.isPending}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              {createNewServiceMutation.isPending ? "Criando..." : "Criar Serviço"}
+                            </Button>
+                            <Button 
+                              type="button" 
+                              variant="outline"
+                              onClick={handleCancelNewService}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        </form>
+                      </Form>
+                    </div>
+                  )}
+
+                  {/* Lista de serviços existentes */}
                   {userProviders.length > 0 ? (
                     <div className="space-y-3">
                       {userProviders.map((serviceProvider) => (
-                        <div key={serviceProvider.id} className="border rounded-lg p-3 hover:bg-gray-50">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center">
-                              <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center mr-3">
+                        <div 
+                          key={serviceProvider.id} 
+                          className="border rounded-lg p-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                          onClick={() => setLocation(`/provider/${serviceProvider.id}`)}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-start flex-1 min-w-0">
+                              <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center mr-3 flex-shrink-0">
                                 <i className={`${serviceProvider.category?.icon || 'fas fa-briefcase'} text-primary-600`}></i>
                               </div>
-                              <div>
-                                <h4 className="font-medium text-sm">{serviceProvider.category.name}</h4>
-                                <p className="text-xs text-gray-600">{serviceProvider.location}</p>
-                                <div className="flex items-center text-xs text-gray-500 mt-1">
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-sm text-gray-900 mb-1">{serviceProvider.category.name}</h4>
+                                
+                                {/* Descrição truncada */}
+                                {serviceProvider.description && (
+                                  <p className="text-xs text-gray-600 mb-2 line-clamp-2 leading-relaxed">
+                                    {serviceProvider.description.length > 120 
+                                      ? `${serviceProvider.description.substring(0, 120)}...` 
+                                      : serviceProvider.description
+                                    }
+                                  </p>
+                                )}
+                                
+                                <p className="text-xs text-gray-600 mb-1">{serviceProvider.location}</p>
+                                
+                                <div className="flex items-center text-xs text-gray-500">
                                   <Star className="w-3 h-3 mr-1 text-yellow-500" />
                                   <span>{serviceProvider.averageRating?.toFixed(1) || "0.0"} ({serviceProvider.reviewCount})</span>
                                 </div>
                               </div>
                             </div>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => setLocation(`/provider/${serviceProvider.id}`)}
-                              className="text-xs"
-                            >
-                              Ver
-                            </Button>
+                            
+                            {/* Botão de ação */}
+                            <div className="ml-3 flex-shrink-0">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLocation(`/provider/${serviceProvider.id}`);
+                                }}
+                                className="text-xs"
+                              >
+                                Ver
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -707,12 +1046,21 @@ export default function ProviderDashboard() {
                     <div className="text-center py-4">
                       <Briefcase className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                       <p className="text-sm text-gray-600 mb-3">Nenhum serviço cadastrado</p>
-                      <Button 
-                        size="sm" 
-                        onClick={() => setLocation('/complete-profile')}
-                      >
-                        Criar Serviço
-                      </Button>
+                      {!showNewServiceForm && (
+                        <Button 
+                          size="sm" 
+                          onClick={() => setShowNewServiceForm(true)}
+                        >
+                          Criar Serviço
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Mensagem quando todas as categorias estão ocupadas */}
+                  {userProviders.length >= categories.length && userProviders.length > 0 && (
+                    <div className="text-center py-4 text-sm text-gray-500">
+                      Você já possui serviços em todas as categorias disponíveis.
                     </div>
                   )}
                 </CardContent>
@@ -1496,7 +1844,7 @@ export default function ProviderDashboard() {
               <CardHeader>
                 <CardTitle>Editar Perfil Profissional</CardTitle>
                 <CardDescription>
-                  Mantenha suas informações atualizadas para atrair mais clientes
+                  Mantenha suas informações pessoais atualizadas
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1504,38 +1852,13 @@ export default function ProviderDashboard() {
                   <form onSubmit={form.handleSubmit(handleUpdateProvider)} className="space-y-6">
                     <FormField
                       control={form.control}
-                      name="categoryId"
+                      name="bio"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Categoria de Serviço</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecione uma categoria" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {categories.map((category) => (
-                                <SelectItem key={category.id} value={category.id}>
-                                  {category.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="description"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Descrição dos Serviços</FormLabel>
+                          <FormLabel>Sobre Mim</FormLabel>
                           <FormControl>
                             <Textarea 
-                              placeholder="Descreva seus serviços e especialidades..."
+                              placeholder="Conte um pouco sobre você, suas especialidades e o que te motiva..."
                               rows={4}
                               {...field} 
                             />
@@ -1545,54 +1868,33 @@ export default function ProviderDashboard() {
                       )}
                     />
 
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="minHourlyRate"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Valor por Hora (R$)</FormLabel>
-                            <FormControl>
-                              <Input 
-                                type="number" 
-                                placeholder="80.00" 
-                                step="0.01"
-                                {...field} 
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="location"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Localização</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Cidade/Bairro onde atende" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
                     <FormField
                       control={form.control}
                       name="experience"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Experiência</FormLabel>
+                          <FormLabel>Experiências</FormLabel>
                           <FormControl>
                             <Textarea 
-                              placeholder="Descreva sua experiência profissional..."
-                              rows={3}
+                              placeholder="Descreva sua experiência profissional, formação, certificações e trabalhos realizados..."
+                              rows={4}
                               {...field}
                               value={field.value || ''} 
                             />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="location"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Localidade</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Cidade, bairro ou região onde você atende" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1710,6 +2012,11 @@ export default function ProviderDashboard() {
                 </div>
               </CardContent>
             </Card>
+                  </TabsContent>
+                </Tabs>
+              </>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
       </div>
