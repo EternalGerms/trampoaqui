@@ -10,6 +10,8 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   name: text("name").notNull(),
   phone: text("phone"),
+  cpf: text("cpf").notNull().unique(),
+  birthDate: timestamp("birth_date").notNull(),
   isProviderEnabled: boolean("is_provider_enabled").default(false).notNull(),
   // Provider profile fields
   bio: text("bio"), // About me section
@@ -185,6 +187,19 @@ export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
   isProviderEnabled: true, // This will be handled separately
+}).extend({
+  cpf: z.string().min(11, "CPF deve ter 11 dígitos").max(14, "CPF deve ter no máximo 14 caracteres"),
+  birthDate: z.string().refine((date) => {
+    const birthDate = new Date(date);
+    const today = new Date();
+    const age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      return age - 1 >= 18;
+    }
+    return age >= 18;
+  }, "Usuário deve ter pelo menos 18 anos").transform((date) => new Date(date)),
 });
 
 // Provider profile update schema (for updating user profile info)

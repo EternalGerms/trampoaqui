@@ -28,6 +28,7 @@ export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByCPF(cpf: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<InsertUser>): Promise<User>;
   updateUserProfile(userId: string, profile: { bio?: string; experience?: string; location?: string }): Promise<User>;
@@ -95,13 +96,15 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getUserByCPF(cpf: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.cpf, cpf));
+    return user || undefined;
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
-      .values({
-        ...insertUser,
-        isProviderEnabled: false // All users start as clients
-      })
+      .values(insertUser)
       .returning();
     return user;
   }

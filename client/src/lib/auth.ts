@@ -33,7 +33,7 @@ class AuthManager {
     return data;
   }
 
-  async register(userData: { email: string; password: string; name: string; phone?: string; }): Promise<AuthResponse> {
+  async register(userData: { email: string; password: string; name: string; phone?: string; cpf: string; birthDate: string; }): Promise<AuthResponse> {
     const response = await apiRequest('POST', '/api/auth/register', userData);
     const data = await response.json();
     

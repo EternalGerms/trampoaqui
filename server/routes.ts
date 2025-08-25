@@ -151,10 +151,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userData = insertUserSchema.parse(req.body);
       
-      // Check if user already exists
-      const existingUser = await storage.getUserByEmail(userData.email);
-      if (existingUser) {
-        return res.status(400).json({ message: "User already exists" });
+      // Check if user already exists by email
+      const existingUserByEmail = await storage.getUserByEmail(userData.email);
+      if (existingUserByEmail) {
+        return res.status(400).json({ message: "Email já está em uso" });
+      }
+      
+      // Check if user already exists by CPF
+      const existingUserByCPF = await storage.getUserByCPF(userData.cpf);
+      if (existingUserByCPF) {
+        return res.status(400).json({ message: "CPF já está em uso" });
       }
 
       // Hash password
