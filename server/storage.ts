@@ -279,6 +279,8 @@ export class DatabaseStorage implements IStorage {
     provider: ServiceProvider & { user: User };
     negotiations: (Negotiation & { proposer: User })[];
   })[]> {
+    console.log(`[Storage] Fetching client requests for user: ${clientId}`);
+    
     const result = await db
       .select({
         request: serviceRequests,
@@ -286,16 +288,26 @@ export class DatabaseStorage implements IStorage {
         providerUser: users,
       })
       .from(serviceRequests)
-      .leftJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
-      .leftJoin(users, eq(serviceProviders.userId, users.id))
+      .innerJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
+      .innerJoin(users, eq(serviceProviders.userId, users.id))
       .where(eq(serviceRequests.clientId, clientId))
       .orderBy(desc(serviceRequests.createdAt));
+
+    console.log(`[Storage] Raw query result:`, result.length, "rows");
+    if (result.length > 0) {
+      console.log(`[Storage] First row:`, {
+        requestId: result[0].request?.id,
+        providerId: result[0].request?.providerId,
+        hasProvider: !!result[0].provider,
+        hasProviderUser: !!result[0].providerUser
+      });
+    }
 
     const requests = result.map(row => ({
       ...row.request,
       provider: {
-        ...row.provider!,
-        user: row.providerUser!,
+        ...row.provider,
+        user: row.providerUser,
       },
     }));
 
@@ -308,7 +320,7 @@ export class DatabaseStorage implements IStorage {
           proposer: users,
         })
         .from(negotiations)
-        .leftJoin(users, eq(negotiations.proposerId, users.id))
+        .innerJoin(users, eq(negotiations.proposerId, users.id))
         .where(eq(negotiations.requestId, request.id))
         .orderBy(desc(negotiations.createdAt));
 
@@ -316,7 +328,7 @@ export class DatabaseStorage implements IStorage {
         ...request,
         negotiations: negotiationResults.map(row => ({
           ...row.negotiation,
-          proposer: row.proposer!,
+          proposer: row.proposer,
         })),
       };
 
@@ -341,13 +353,13 @@ export class DatabaseStorage implements IStorage {
         client: users,
       })
       .from(serviceRequests)
-      .leftJoin(users, eq(serviceRequests.clientId, users.id))
+      .innerJoin(users, eq(serviceRequests.clientId, users.id))
       .where(eq(serviceRequests.providerId, providerId))
       .orderBy(desc(serviceRequests.createdAt));
 
     return result.map(row => ({
       ...row.request,
-      client: row.client!,
+      client: row.client,
     }));
   }
 
@@ -363,7 +375,7 @@ export class DatabaseStorage implements IStorage {
         client: users,
       })
       .from(serviceRequests)
-      .leftJoin(users, eq(serviceRequests.clientId, users.id))
+      .innerJoin(users, eq(serviceRequests.clientId, users.id))
       .where(eq(serviceRequests.providerId, providerId))
       .orderBy(desc(serviceRequests.createdAt));
 
@@ -371,7 +383,7 @@ export class DatabaseStorage implements IStorage {
 
     const requests = result.map(row => ({
       ...row.request,
-      client: row.client!,
+      client: row.client,
     }));
 
     // Fetch negotiations for each request
@@ -385,7 +397,7 @@ export class DatabaseStorage implements IStorage {
           proposer: users,
         })
         .from(negotiations)
-        .leftJoin(users, eq(negotiations.proposerId, users.id))
+        .innerJoin(users, eq(negotiations.proposerId, users.id))
         .where(eq(negotiations.requestId, request.id))
         .orderBy(desc(negotiations.createdAt));
 
@@ -395,7 +407,7 @@ export class DatabaseStorage implements IStorage {
         ...request,
         negotiations: negotiationResults.map(row => ({
           ...row.negotiation,
-          proposer: row.proposer!,
+          proposer: row.proposer,
         })),
       };
 

@@ -451,11 +451,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Service requests
   app.get("/api/requests", authenticateToken, async (req: Request, res: Response) => {
     try {
+      console.log("Client requests route called for user:", req.user!.userId);
+      
       // Get service requests for the current user as a client with negotiations
       const requests = await storage.getServiceRequestsByClientWithNegotiations(req.user!.userId);
       
+      console.log("Client requests found:", requests.length);
+      if (requests.length > 0) {
+        console.log("First request structure:", {
+          id: requests[0].id,
+          title: requests[0].title,
+          hasProvider: !!requests[0].provider,
+          providerId: requests[0].providerId,
+          providerData: requests[0].provider
+        });
+      }
+      
       res.json(requests);
     } catch (error) {
+      console.error("Error in client requests route:", error);
       res.status(500).json({ message: "Server error" });
     }
   });

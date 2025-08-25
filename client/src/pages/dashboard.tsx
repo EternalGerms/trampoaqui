@@ -207,6 +207,7 @@ export default function Dashboard() {
     status === 'accepted' ? 'bg-blue-100 text-blue-800' :
     status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
     status === 'negotiating' ? 'bg-blue-100 text-blue-800' :
+    status === 'pending_completion' ? 'bg-blue-100 text-blue-800' :
     status === 'cancelled' ? 'bg-red-100 text-red-800' :
     'bg-gray-100 text-gray-800';
 
@@ -215,6 +216,7 @@ export default function Dashboard() {
     status === 'accepted' ? 'Aceito' :
     status === 'pending' ? 'Pendente' :
     status === 'negotiating' ? 'Negociando' :
+    status === 'pending_completion' ? 'Negociando' :
     status === 'cancelled' ? 'Cancelado' :
     status;
 
@@ -256,8 +258,14 @@ export default function Dashboard() {
   useEffect(() => {
     if (currentUser?.isProviderEnabled) {
       setLocation('/provider-dashboard');
+      return; // Exit early to prevent rendering
     }
   }, [currentUser?.isProviderEnabled, setLocation]);
+
+  // Don't render anything if user should be redirected
+  if (currentUser?.isProviderEnabled) {
+    return null;
+  }
 
   // Function to get the effective status of a negotiation for the client
   // This handles the logic for showing "Recusado" vs "Aguardando resposta"
@@ -296,6 +304,11 @@ export default function Dashboard() {
     // If request is already completed, accepted, or cancelled, return that status
     if (['completed', 'accepted', 'cancelled'].includes(request.status)) {
       return request.status;
+    }
+
+    // If request is pending_completion, show as negotiating for the client
+    if (request.status === 'pending_completion') {
+      return 'negotiating';
     }
 
     // If request is pending and has no negotiations, return pending
@@ -416,6 +429,7 @@ export default function Dashboard() {
                                   {getStatusText(getEffectiveRequestStatus(request))}
                                 </Badge>
                               </div>
+
                               <p className="text-gray-600 text-sm mb-3">{request.description}</p>
                               <div className="flex items-center gap-4 text-sm text-gray-500 mb-3">
                                 <span className="font-medium text-blue-600">
