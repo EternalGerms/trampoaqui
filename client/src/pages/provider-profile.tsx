@@ -55,12 +55,46 @@ const messageSchema = z.object({
 
 const editProviderSchema = insertServiceProviderSchema.omit({ userId: true });
 
+// Função para validar cidade e estado
+const validateCityState = async (location: string): Promise<boolean> => {
+  if (!location) return true;
+  
+  // Extrair cidade e estado da localização (formato: "Cidade - Estado")
+  const parts = location.split(' - ');
+  if (parts.length !== 2) return true; // Se não estiver no formato esperado, permitir
+  
+  const city = parts[0].trim();
+  const state = parts[1].trim();
+  
+  if (!city || !state) return true;
+  
+  try {
+    // Usar a API do IBGE para validar cidade e estado
+    const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${state.toUpperCase()}/municipios`);
+    const cities = await response.json();
+    
+    const cityExists = cities.some((c: any) => 
+      c.nome.toLowerCase() === city.toLowerCase()
+    );
+    
+    if (!cityExists) {
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    // Se a API falhar, permitir o envio mas mostrar aviso
+    console.warn('Não foi possível validar a cidade/estado:', error);
+    return true;
+  }
+};
+
 type RequestForm = z.infer<typeof requestSchema>;
 type MessageForm = z.infer<typeof messageSchema>;
 type EditProviderForm = z.infer<typeof editProviderSchema>;
 
 type ProviderWithDetails = ServiceProvider & { 
-  user: User; 
+  user: User & { city?: string; state?: string }; 
   category: ServiceCategory; 
   averageRating: number; 
   reviewCount: number 
@@ -172,7 +206,7 @@ export default function ProviderProfile() {
       minDailyRate: provider?.minDailyRate || "",
       minFixedRate: provider?.minFixedRate || "",
       experience: provider?.experience || "",
-      location: provider?.location || "",
+      location: provider?.location || (provider?.user?.city && provider?.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
       isVerified: provider?.isVerified || false,
       availability: provider?.availability || {},
     },
@@ -189,7 +223,7 @@ export default function ProviderProfile() {
         minDailyRate: provider.minDailyRate || "",
         minFixedRate: provider.minFixedRate || "",
         experience: provider.experience,
-        location: provider.location,
+        location: provider.location || (provider.user?.city && provider.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
         isVerified: provider.isVerified,
         availability: provider.availability || {},
       });
@@ -272,56 +306,74 @@ export default function ProviderProfile() {
     sendMessageMutation.mutate(data);
   };
 
-  const onEditSubmit = (data: EditProviderForm) => {
+  const onEditSubmit = async (data: EditProviderForm) => {
+    // Validar cidade e estado antes de prosseguir
+    const isCityStateValid = await validateCityState(data.location);
+    if (!isCityStateValid) {
+      toast({
+        title: "Localização inválida",
+        description: "A cidade informada não foi encontrada no estado especificado. Verifique se está correta.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     updateProviderMutation.mutate(data);
   };
 
   // Verificações condicionais APÓS todos os hooks
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen flex flex-col">
         <Header />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="animate-pulse">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
-              <div className="h-4 bg-gray-200 rounded w-1/4 mb-6"></div>
-              <div className="space-y-3">
-                <div className="h-4 bg-gray-200 rounded"></div>
-                <div className="h-4 bg-gray-200 rounded w-5/6"></div>
-                <div className="h-4 bg-gray-200 rounded w-4/6"></div>
+        <main className="flex-1 bg-gray-50">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="animate-pulse">
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/4 mb-6"></div>
+                <div className="space-y-3">
+                  <div className="h-4 bg-gray-200 rounded"></div>
+                  <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+                  <div className="h-4 bg-gray-200 rounded w-4/6"></div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </main>
+        <Footer />
       </div>
     );
   }
 
   if (!provider) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen flex flex-col">
         <Header />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Prestador não encontrado</h2>
-            <p className="text-gray-600 mb-4">
-              O prestador que você está procurando não existe ou foi removido.
-            </p>
-            <Button onClick={() => setLocation('/services')}>
-              Voltar aos Serviços
-            </Button>
+        <main className="flex-1 bg-gray-50">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="text-center py-12">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Prestador não encontrado</h2>
+              <p className="text-gray-600 mb-4">
+                O prestador que você está procurando não existe ou foi removido.
+              </p>
+              <Button onClick={() => setLocation('/services')}>
+                Voltar aos Serviços
+              </Button>
+            </div>
           </div>
-        </div>
+        </main>
+        <Footer />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen flex flex-col">
       <Header />
       
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 bg-gray-50">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Provider Info */}
           <div className="lg:col-span-2">
@@ -758,36 +810,51 @@ export default function ProviderProfile() {
                     <FormField
                       control={editForm.control}
                       name="pricingTypes"
-                      render={({ field }) => (
+                      render={() => (
                         <FormItem>
                           <FormLabel>Tipos de Cobrança</FormLabel>
-                          <div className="flex flex-col space-y-3">
+                          <div className="space-y-3">
                             {[
-                              { id: 'hourly', label: '⏰ Por Hora', desc: 'Cobrança por hora trabalhada' },
-                              { id: 'daily', label: '📅 Por Dia', desc: 'Cobrança por dia completo' },
-                              { id: 'fixed', label: '💰 Valor Fixo', desc: 'Preço fechado para o serviço' }
-                            ].map((option) => (
-                              <div key={option.id} className="flex items-start space-x-3">
-                                <Checkbox
-                                  checked={field.value?.includes(option.id as any)}
-                                  onCheckedChange={(checked) => {
-                                    const currentValue = field.value || [];
-                                    if (checked) {
-                                      field.onChange([...currentValue, option.id]);
-                                    } else {
-                                      field.onChange(currentValue.filter((value: string) => value !== option.id));
-                                    }
-                                  }}
-                                />
-                                <div className="grid gap-1.5 leading-none">
-                                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                    {option.label}
-                                  </label>
-                                  <p className="text-xs text-muted-foreground">
-                                    {option.desc}
-                                  </p>
-                                </div>
-                              </div>
+                              { id: "hourly" as const, label: "Por Hora", description: "Cobrança por hora trabalhada" },
+                              { id: "daily" as const, label: "Por Dia", description: "Cobrança por dia de trabalho" },
+                              { id: "fixed" as const, label: "Valor Fixo", description: "Preço fechado por projeto/serviço" }
+                            ].map((item) => (
+                              <FormField
+                                key={item.id}
+                                control={editForm.control}
+                                name="pricingTypes"
+                                render={({ field }) => {
+                                  return (
+                                    <FormItem
+                                      key={item.id}
+                                      className="flex flex-row items-start space-x-3 space-y-0"
+                                    >
+                                      <FormControl>
+                                        <Checkbox
+                                          checked={field.value?.includes(item.id)}
+                                          onCheckedChange={(checked) => {
+                                            return checked
+                                              ? field.onChange([...field.value, item.id])
+                                              : field.onChange(
+                                                  field.value?.filter(
+                                                    (value) => value !== item.id
+                                                  )
+                                                )
+                                          }}
+                                        />
+                                      </FormControl>
+                                      <div className="space-y-1 leading-none">
+                                        <FormLabel className="font-normal">
+                                          {item.label}
+                                        </FormLabel>
+                                        <p className="text-sm text-gray-500">
+                                          {item.description}
+                                        </p>
+                                      </div>
+                                    </FormItem>
+                                  )
+                                }}
+                              />
                             ))}
                           </div>
                           <FormMessage />
@@ -872,9 +939,12 @@ export default function ProviderProfile() {
                         <FormItem>
                           <FormLabel>Localização</FormLabel>
                           <FormControl>
-                            <Input placeholder="Ex: São Paulo, SP" {...field} />
+                            <Input placeholder="Ex: São Paulo - SP" {...field} />
                           </FormControl>
                           <FormMessage />
+                          <p className="text-sm text-gray-500">
+                            Formato recomendado: Cidade - Estado (ex: São Paulo - SP)
+                          </p>
                         </FormItem>
                       )}
                     />
@@ -902,7 +972,8 @@ export default function ProviderProfile() {
             </Card>
           </div>
         )}
-      </div>
+              </div>
+      </main>
       
       <Footer />
     </div>

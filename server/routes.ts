@@ -230,7 +230,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: user.id, 
         email: user.email, 
         name: user.name, 
-        isProviderEnabled: user.isProviderEnabled 
+        isProviderEnabled: user.isProviderEnabled,
+        bio: user.bio,
+        experience: user.experience,
+        location: user.location,
+        city: user.city,
+        state: user.state
       });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
@@ -259,7 +264,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: user.id, 
           email: user.email, 
           name: user.name, 
-          isProviderEnabled: user.isProviderEnabled 
+          isProviderEnabled: user.isProviderEnabled,
+          bio: user.bio,
+          experience: user.experience,
+          location: user.location,
+          city: user.city,
+          state: user.state
         },
         profileStatus: {
           isComplete: isProfileComplete,
@@ -287,7 +297,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isProviderEnabled: user.isProviderEnabled,
         bio: user.bio,
         experience: user.experience,
-        location: user.location
+        location: user.location,
+        city: user.city,
+        state: user.state
       });
     } catch (error) {
       console.error("Error updating profile:", error);

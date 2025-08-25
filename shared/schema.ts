@@ -17,6 +17,15 @@ export const users = pgTable("users", {
   bio: text("bio"), // About me section
   experience: text("experience"), // Professional experience
   location: text("location"), // Service location
+  // Address fields
+  cep: text("cep"),
+  city: text("city"),
+  state: text("state"),
+  street: text("street"),
+  neighborhood: text("neighborhood"),
+  number: text("number"),
+  hasNumber: boolean("has_number").default(true),
+  complement: text("complement"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -206,7 +215,16 @@ export const insertUserSchema = createInsertSchema(users).omit({
 export const updateProviderProfileSchema = z.object({
   bio: z.string().optional(),
   experience: z.string().min(10, "Experiência deve ter pelo menos 10 caracteres"),
-  location: z.string().min(3, "Localização deve ter pelo menos 3 caracteres"),
+  location: z.string().min(3, "Localização deve ter pelo menos 3 caracteres").refine((location) => {
+    // Validar formato Cidade - Estado
+    const parts = location.split(' - ');
+    if (parts.length === 2) {
+      const city = parts[0].trim();
+      const state = parts[1].trim();
+      return city.length >= 2 && state.length >= 2;
+    }
+    return true; // Se não estiver no formato esperado, permitir
+  }, "Formato recomendado: Cidade - Estado (ex: São Paulo - SP)"),
 });
 
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({
@@ -218,6 +236,16 @@ export const insertServiceProviderSchema = createInsertSchema(serviceProviders).
   createdAt: true,
 }).extend({
   pricingTypes: z.array(z.enum(['hourly', 'daily', 'fixed'])).min(1),
+  location: z.string().min(3, "Localização deve ter pelo menos 3 caracteres").refine((location) => {
+    // Validar formato Cidade - Estado
+    const parts = location.split(' - ');
+    if (parts.length === 2) {
+      const city = parts[0].trim();
+      const state = parts[1].trim();
+      return city.length >= 2 && state.length >= 2;
+    }
+    return true; // Se não estiver no formato esperado, permitir
+  }, "Formato recomendado: Cidade - Estado (ex: São Paulo - SP)"),
   minHourlyRate: z.union([z.string(), z.number()]).optional().transform((val) => {
     if (typeof val === 'string') {
       return val === '' ? undefined : val;

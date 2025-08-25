@@ -8,6 +8,8 @@ export interface User {
   bio?: string;
   experience?: string;
   location?: string;
+  city?: string;
+  state?: string;
 }
 
 export interface AuthResponse {

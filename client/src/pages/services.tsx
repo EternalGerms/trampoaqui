@@ -105,130 +105,132 @@ export default function Services() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen flex flex-col">
       <Header />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Search and Filters */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">Encontre Profissionais</h1>
-          
-          <div className="grid md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Input 
-                type="text" 
-                placeholder="Buscar profissionais..."
-                className="pl-10"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            </div>
+      <div className="flex-1 bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Search and Filters */}
+          <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
+            <h1 className="text-2xl font-bold text-gray-900 mb-6">Encontre Profissionais</h1>
             
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger>
-                <SelectValue placeholder="Todas as categorias" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as categorias</SelectItem>
-                {categories.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    {category.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <div className="relative">
-              <Input 
-                type="text" 
-                placeholder="Localização"
-                className="pl-10"
-                value={location}
-                onChange={(e) => setLocationState(e.target.value)}
-              />
-              <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            </div>
-            
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="rating">Melhor avaliados</SelectItem>
-                <SelectItem value="price_low">Menor preço</SelectItem>
-                <SelectItem value="price_high">Maior preço</SelectItem>
-                <SelectItem value="newest">Mais recentes</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="flex items-center justify-between mt-6">
-            <p className="text-gray-600">
-              {filteredProviders.length} profissionais encontrados
-            </p>
-            <Button 
-              variant="outline"
-              onClick={() => {
-                setSearchQuery("");
-                setSelectedCategory("all");
-                setLocationState("");
-                setSortBy("rating");
-              }}
-            >
-              <Filter className="w-4 h-4 mr-2" />
-              Limpar filtros
-            </Button>
-          </div>
-        </div>
-
-        {/* Results */}
-        {isLoading ? (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-pulse">
-                <div className="w-full h-48 bg-gray-200"></div>
-                <div className="p-6">
-                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                  <div className="h-3 bg-gray-200 rounded mb-4"></div>
-                  <div className="h-8 bg-gray-200 rounded"></div>
-                </div>
+            <div className="grid md:grid-cols-4 gap-4">
+              <div className="relative">
+                <Input 
+                  type="text" 
+                  placeholder="Buscar profissionais..."
+                  className="pl-10"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               </div>
-            ))}
-          </div>
-        ) : filteredProviders.length > 0 ? (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProviders.map((provider) => (
-              <ProviderCard
-                key={provider.id}
-                provider={provider}
-                onContact={handleContactProvider}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            <div className="text-6xl text-gray-300 mb-4">
-              <Search />
+              
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas as categorias" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as categorias</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <div className="relative">
+                <Input 
+                  type="text" 
+                  placeholder="Localização"
+                  className="pl-10"
+                  value={location}
+                  onChange={(e) => setLocationState(e.target.value)}
+                />
+                <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              </div>
+              
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rating">Melhor avaliados</SelectItem>
+                  <SelectItem value="price_low">Menor preço</SelectItem>
+                  <SelectItem value="price_high">Maior preço</SelectItem>
+                  <SelectItem value="newest">Mais recentes</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              Nenhum profissional encontrado
-            </h3>
-            <p className="text-gray-600 mb-6">
-              Tente ajustar seus filtros ou buscar por outros termos
-            </p>
-            <Button 
-              onClick={() => {
-                setSearchQuery("");
-                setSelectedCategory("all");
-                setLocationState("");
-                setSortBy("rating");
-              }}
-            >
-              Limpar filtros
-            </Button>
+            
+            <div className="flex items-center justify-between mt-6">
+              <p className="text-gray-600">
+                {filteredProviders.length} profissionais encontrados
+              </p>
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedCategory("all");
+                  setLocationState("");
+                  setSortBy("rating");
+                }}
+              >
+                <Filter className="w-4 h-4 mr-2" />
+                Limpar filtros
+              </Button>
+            </div>
           </div>
-        )}
+
+          {/* Results */}
+          {isLoading ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-pulse">
+                  <div className="w-full h-48 bg-gray-200"></div>
+                  <div className="p-6">
+                    <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded mb-4"></div>
+                    <div className="h-8 bg-gray-200 rounded"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredProviders.length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredProviders.map((provider) => (
+                <ProviderCard
+                  key={provider.id}
+                  provider={provider}
+                  onContact={handleContactProvider}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <div className="text-6xl text-gray-300 mb-4">
+                <Search />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Nenhum profissional encontrado
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Tente ajustar seus filtros ou buscar por outros termos
+              </p>
+              <Button 
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedCategory("all");
+                  setLocationState("");
+                  setSortBy("rating");
+                }}
+              >
+                Limpar filtros
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
       
       <Footer />

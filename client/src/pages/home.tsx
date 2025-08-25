@@ -4,7 +4,6 @@ import { Link, useLocation } from "wouter";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import ServiceCard from "@/components/service-card";
-import ProviderCard from "@/components/provider-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -20,7 +19,6 @@ type ProviderWithDetails = ServiceProvider & {
 
 export default function Home() {
   const [, setLocation] = useLocation();
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [location, setLocationState] = useState("");
 
@@ -36,13 +34,8 @@ export default function Home() {
     setLocation(`/services?category=${categoryId}`);
   };
 
-  const handleContactProvider = (providerId: string) => {
-    setLocation(`/provider/${providerId}`);
-  };
-
   const handleSearch = () => {
     const params = new URLSearchParams();
-    if (searchQuery) params.set('search', searchQuery);
     if (selectedCategory && selectedCategory !== 'all') params.set('category', selectedCategory);
     if (location) params.set('location', location);
     
@@ -57,10 +50,8 @@ export default function Home() {
     setLocation('/register?type=provider');
   };
 
-  const featuredProviders = providers.slice(0, 3);
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen flex flex-col">
       <Header />
       
       {/* Hero Section */}
@@ -106,6 +97,52 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Search Section */}
+      <section className="py-16 bg-white">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">Encontre o profissional ideal</h2>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              Use nossa busca inteligente para encontrar profissionais qualificados na sua região
+            </p>
+          </div>
+          
+          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+            <div className="grid md:grid-cols-3 gap-4 mb-6">
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas as categorias" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as categorias</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <div className="relative">
+                <Input 
+                  type="text" 
+                  placeholder="Sua localização"
+                  className="pl-10"
+                  value={location}
+                  onChange={(e) => setLocationState(e.target.value)}
+                />
+                <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              </div>
+
+              <Button onClick={handleSearch} className="w-full bg-primary-600 hover:bg-primary-700 text-white py-4 rounded-lg text-lg font-medium transition-colors flex items-center justify-center">
+                <Search className="w-5 h-5 mr-2" />
+                Buscar Profissionais
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Service Categories */}
       <section id="services" className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -132,142 +169,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Featured Providers */}
-      <section id="providers" className="py-16 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">Profissionais em Destaque</h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Conheça alguns dos profissionais mais bem avaliados da nossa comunidade
-            </p>
-          </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {featuredProviders.map((provider) => (
-              <ProviderCard
-                key={provider.id}
-                provider={provider}
-                onContact={handleContactProvider}
-              />
-            ))}
-          </div>
-
-          <div className="text-center mt-12">
-            <Link href="/services">
-              <Button variant="outline" className="border-2 border-primary-600 text-primary-600 hover:bg-blue-50 px-8 py-3 rounded-lg font-medium transition-colors">
-                Ver Todos os Profissionais
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works */}
-      <section id="how-it-works" className="py-16 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">Como Funciona</h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Simples, rápido e seguro. Encontre o profissional ideal em poucos cliques
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="bg-primary-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span className="text-primary-600 text-2xl font-bold">1</span>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Busque o Serviço</h3>
-              <p className="text-gray-600 leading-relaxed">
-                Navegue pelas categorias ou use nossa busca para encontrar o tipo de serviço que você precisa.
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="bg-orange-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span className="text-orange-600 text-2xl font-bold">2</span>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Compare Profissionais</h3>
-              <p className="text-gray-600 leading-relaxed">
-                Veja perfis, avaliações, preços e escolha o profissional que melhor atende suas necessidades.
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="bg-green-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span className="text-green-600 text-2xl font-bold">3</span>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Contrate com Segurança</h3>
-              <p className="text-gray-600 leading-relaxed">
-                Entre em contato, combine os detalhes do serviço e avalie o profissional após a conclusão.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Search Interface Demo */}
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-white rounded-2xl shadow-xl p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">Encontre Profissionais Agora</h2>
-            
-            <div className="space-y-4">
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">O que você precisa?</label>
-                  <div className="relative">
-                    <Input 
-                      type="text" 
-                      placeholder="Ex: Eletricista, Encanador, Faxineira..."
-                      className="pl-10"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  </div>
-                </div>
-                
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Localização</label>
-                  <div className="relative">
-                    <Input 
-                      type="text" 
-                      placeholder="Sua localização"
-                      className="pl-10"
-                      value={location}
-                      onChange={(e) => setLocationState(e.target.value)}
-                    />
-                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
-                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todas as categorias" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas as categorias</SelectItem>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Button onClick={handleSearch} className="w-full bg-primary-600 hover:bg-primary-700 text-white py-4 rounded-lg text-lg font-medium transition-colors flex items-center justify-center">
-                <Search className="w-5 h-5 mr-2" />
-                Buscar Profissionais
-              </Button>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Trust & Safety */}
       <section className="py-16 bg-blue-50">
@@ -323,29 +225,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-16 bg-primary-600">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl lg:text-4xl font-bold text-white mb-6">
-            Pronto para começar?
-          </h2>
-          <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-            Junte-se à nossa comunidade e conecte-se aos melhores profissionais da sua região
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/services">
-              <Button className="bg-white text-primary-600 hover:bg-gray-50 px-8 py-4 rounded-lg text-lg font-medium transition-colors">
-                Encontrar Profissionais
-              </Button>
-            </Link>
-            <Link href="/register?type=provider">
-              <Button variant="outline" className="border-2 border-white text-white hover:bg-white hover:text-primary-600 px-8 py-4 rounded-lg text-lg font-medium transition-colors">
-                Oferecer Serviços
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+
 
       <Footer />
     </div>

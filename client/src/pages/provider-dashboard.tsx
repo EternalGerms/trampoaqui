@@ -82,13 +82,47 @@ const reviewSchema = z.object({
   comment: z.string().min(10, "Comentário deve ter pelo menos 10 caracteres"),
 });
 
+// Função para validar cidade e estado
+const validateCityState = async (location: string): Promise<boolean> => {
+  if (!location) return true;
+  
+  // Extrair cidade e estado da localização (formato: "Cidade - Estado")
+  const parts = location.split(' - ');
+  if (parts.length !== 2) return true; // Se não estiver no formato esperado, permitir
+  
+  const city = parts[0].trim();
+  const state = parts[1].trim();
+  
+  if (!city || !state) return true;
+  
+  try {
+    // Usar a API do IBGE para validar cidade e estado
+    const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${state.toUpperCase()}/municipios`);
+    const cities = await response.json();
+    
+    const cityExists = cities.some((c: any) => 
+      c.nome.toLowerCase() === city.toLowerCase()
+    );
+    
+    if (!cityExists) {
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    // Se a API falhar, permitir o envio mas mostrar aviso
+    console.warn('Não foi possível validar a cidade/estado:', error);
+    return true;
+  }
+};
+
 type UpdateProviderForm = z.infer<typeof updateProviderSchema>;
 type NewServiceForm = z.infer<typeof newServiceSchema>;
 type CounterProposalForm = z.infer<typeof counterProposalSchema>;
 type ReviewForm = z.infer<typeof reviewSchema>;
 
 type ProviderWithDetails = ServiceProvider & { 
-  user: { id: string; name: string; email: string; phone?: string; bio?: string };
+  user: { id: string; name: string; email: string; phone?: string; bio?: string; city?: string; state?: string };
   category: ServiceCategory; 
   averageRating: number; 
   reviewCount: number 
@@ -245,7 +279,7 @@ export default function ProviderDashboard() {
     defaultValues: {
       bio: provider?.user?.bio || "",
       experience: provider?.experience || "",
-      location: provider?.location || "",
+      location: provider?.location || (provider?.user?.city && provider?.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
     },
   });
 
@@ -258,7 +292,7 @@ export default function ProviderDashboard() {
       minHourlyRate: "",
       minDailyRate: "",
       minFixedRate: "",
-      location: provider?.location || "",
+      location: provider?.location || (provider?.user?.city && provider?.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
     },
   });
 
@@ -289,7 +323,7 @@ export default function ProviderDashboard() {
       form.reset({
         bio: provider.user?.bio || "",
         experience: provider.experience || "",
-        location: provider.location || "",
+        location: provider.location || (provider.user?.city && provider.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
       });
     }
   }, [provider, form]);
@@ -334,7 +368,15 @@ export default function ProviderDashboard() {
         description: "Seu serviço foi adicionado com sucesso.",
       });
       setShowNewServiceForm(false);
-      newServiceForm.reset();
+      newServiceForm.reset({
+        categoryId: "",
+        description: "",
+        pricingTypes: ["fixed"],
+        minHourlyRate: "",
+        minDailyRate: "",
+        minFixedRate: "",
+        location: provider?.location || (provider?.user?.city && provider?.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
     },
     onError: () => {
@@ -577,7 +619,18 @@ export default function ProviderDashboard() {
     return null;
   }
 
-  const handleUpdateProvider = (data: UpdateProviderForm) => {
+  const handleUpdateProvider = async (data: UpdateProviderForm) => {
+    // Validar cidade e estado antes de prosseguir
+    const isCityStateValid = await validateCityState(data.location);
+    if (!isCityStateValid) {
+      toast({
+        title: "Localização inválida",
+        description: "A cidade informada não foi encontrada no estado especificado. Verifique se está correta.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     updateProviderMutation.mutate(data);
   };
 
@@ -598,7 +651,15 @@ export default function ProviderDashboard() {
 
   const handleCancelNewService = () => {
     setShowNewServiceForm(false);
-    newServiceForm.reset();
+    newServiceForm.reset({
+      categoryId: "",
+      description: "",
+      pricingTypes: ["fixed"],
+      minHourlyRate: "",
+      minDailyRate: "",
+      minFixedRate: "",
+      location: provider?.location || (provider?.user?.city && provider?.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
+    });
   };
 
   const handleUpdateRequestStatus = (requestId: string, status: string) => {
@@ -691,10 +752,11 @@ export default function ProviderDashboard() {
     : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen flex flex-col">
       <Header />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-600">Gerencie seus serviços e solicitações</p>
@@ -877,189 +939,7 @@ export default function ProviderDashboard() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {/* Formulário para novo serviço */}
-                  {showNewServiceForm && (
-                    <div className="border border-blue-200 rounded-lg p-4 mb-4 bg-blue-50">
-                      <h4 className="font-medium text-blue-900 mb-3">Adicionar Novo Serviço</h4>
-                      <Form {...newServiceForm}>
-                        <form onSubmit={newServiceForm.handleSubmit(handleCreateNewService)} className="space-y-4">
-                          <FormField
-                            control={newServiceForm.control}
-                            name="categoryId"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Categoria de Serviço</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                  <FormControl>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Selecione uma categoria" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {categories
-                                      .filter(category => !userProviders.some(p => p.categoryId === category.id))
-                                      .map((category) => (
-                                        <SelectItem key={category.id} value={category.id}>
-                                          {category.name}
-                                        </SelectItem>
-                                      ))}
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
 
-                          <FormField
-                            control={newServiceForm.control}
-                            name="description"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Descrição dos Serviços</FormLabel>
-                                <FormControl>
-                                  <Textarea 
-                                    placeholder="Descreva seus serviços e especialidades nesta categoria..."
-                                    rows={3}
-                                    {...field} 
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={newServiceForm.control}
-                            name="pricingTypes"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Tipos de Preço</FormLabel>
-                                <div className="flex gap-3">
-                                  {(['hourly', 'daily', 'fixed'] as const).map((type) => (
-                                    <div key={type} className="flex items-center space-x-2">
-                                      <input
-                                        type="checkbox"
-                                        id={type}
-                                        checked={field.value.includes(type)}
-                                        onChange={(e) => {
-                                          if (e.target.checked) {
-                                            field.onChange([...field.value, type]);
-                                          } else {
-                                            field.onChange(field.value.filter(t => t !== type));
-                                          }
-                                        }}
-                                        className="rounded border-gray-300"
-                                      />
-                                      <label htmlFor={type} className="text-sm">
-                                        {type === 'hourly' ? 'Por Hora' : type === 'daily' ? 'Por Dia' : 'Valor Fixo'}
-                                      </label>
-                                    </div>
-                                  ))}
-                                </div>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <div className="grid md:grid-cols-3 gap-4">
-                            {newServiceForm.watch('pricingTypes').includes('hourly') && (
-                              <FormField
-                                control={newServiceForm.control}
-                                name="minHourlyRate"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Valor por Hora (R$)</FormLabel>
-                                    <FormControl>
-                                      <Input 
-                                        type="number" 
-                                        placeholder="80.00" 
-                                        step="0.01"
-                                        {...field} 
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            )}
-
-                            {newServiceForm.watch('pricingTypes').includes('daily') && (
-                              <FormField
-                                control={newServiceForm.control}
-                                name="minDailyRate"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Valor por Dia (R$)</FormLabel>
-                                    <FormControl>
-                                      <Input 
-                                        type="number" 
-                                        placeholder="400.00" 
-                                        step="0.01"
-                                        {...field} 
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            )}
-
-                            {newServiceForm.watch('pricingTypes').includes('fixed') && (
-                              <FormField
-                                control={newServiceForm.control}
-                                name="minFixedRate"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Valor Fixo (R$)</FormLabel>
-                                    <FormControl>
-                                      <Input 
-                                        type="number" 
-                                        placeholder="150.00" 
-                                        step="0.01"
-                                        {...field} 
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            )}
-                          </div>
-
-                          <FormField
-                            control={newServiceForm.control}
-                            name="location"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Localização</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="Cidade/Bairro onde atende" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <div className="flex gap-2">
-                            <Button 
-                              type="submit" 
-                              disabled={createNewServiceMutation.isPending}
-                              className="bg-green-600 hover:bg-green-700"
-                            >
-                              {createNewServiceMutation.isPending ? "Criando..." : "Criar Serviço"}
-                            </Button>
-                            <Button 
-                              type="button" 
-                              variant="outline"
-                              onClick={handleCancelNewService}
-                            >
-                              Cancelar
-                            </Button>
-                          </div>
-                        </form>
-                      </Form>
-                    </div>
-                  )}
 
                   {/* Lista de serviços existentes */}
                   {userProviders.length > 0 ? (
@@ -1978,6 +1858,9 @@ export default function ProviderDashboard() {
                             <Input placeholder="Cidade, bairro ou região onde você atende" {...field} />
                           </FormControl>
                           <FormMessage />
+                          <p className="text-sm text-gray-500">
+                            Formato recomendado: Cidade - Estado (ex: São Paulo - SP)
+                          </p>
                         </FormItem>
                       )}
                     />
@@ -2100,7 +1983,8 @@ export default function ProviderDashboard() {
             </div>
           </TabsContent>
         </Tabs>
-      </div>
+        </div>
+      </main>
       
       {/* Client Review Dialog */}
       {selectedRequestForClientReview && (
@@ -2112,6 +1996,200 @@ export default function ProviderDashboard() {
           onOpenChange={setClientReviewDialogOpen}
         />
       )}
+
+      {/* Modal para Criar Novo Serviço */}
+      <Dialog open={showNewServiceForm} onOpenChange={setShowNewServiceForm}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Briefcase className="w-5 h-5" />
+              Adicionar Novo Serviço
+            </DialogTitle>
+            <DialogDescription>
+              Preencha as informações para criar um novo serviço em sua categoria escolhida.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <Form {...newServiceForm}>
+            <form onSubmit={newServiceForm.handleSubmit(handleCreateNewService)} className="space-y-6">
+              <FormField
+                control={newServiceForm.control}
+                name="categoryId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Categoria de Serviço</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione uma categoria" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {categories
+                          .filter(category => !userProviders.some(p => p.categoryId === category.id))
+                          .map((category) => (
+                            <SelectItem key={category.id} value={category.id}>
+                              {category.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={newServiceForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Descrição dos Serviços</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder="Descreva seus serviços e especialidades nesta categoria..."
+                        rows={4}
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={newServiceForm.control}
+                name="pricingTypes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipos de Preço</FormLabel>
+                    <div className="grid grid-cols-3 gap-4">
+                      {(['hourly', 'daily', 'fixed'] as const).map((type) => (
+                        <div key={type} className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id={type}
+                            checked={field.value.includes(type)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                field.onChange([...field.value, type]);
+                              } else {
+                                field.onChange(field.value.filter(t => t !== type));
+                              }
+                            }}
+                            className="rounded border-gray-300"
+                          />
+                          <label htmlFor={type} className="text-sm">
+                            {type === 'hourly' ? 'Por Hora' : type === 'daily' ? 'Por Dia' : 'Valor Fixo'}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid md:grid-cols-3 gap-4">
+                {newServiceForm.watch('pricingTypes').includes('hourly') && (
+                  <FormField
+                    control={newServiceForm.control}
+                    name="minHourlyRate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Valor por Hora (R$)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            placeholder="80.00" 
+                            step="0.01"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {newServiceForm.watch('pricingTypes').includes('daily') && (
+                  <FormField
+                    control={newServiceForm.control}
+                    name="minDailyRate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Valor por Dia (R$)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            placeholder="400.00" 
+                            step="0.01"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {newServiceForm.watch('pricingTypes').includes('fixed') && (
+                  <FormField
+                    control={newServiceForm.control}
+                    name="minFixedRate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Valor Fixo (R$)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            placeholder="150.00" 
+                            step="0.01"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+
+              <FormField
+                control={newServiceForm.control}
+                name="location"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Localização</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Cidade/Bairro onde atende" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex gap-3 pt-4">
+                <Button 
+                  type="submit" 
+                  disabled={createNewServiceMutation.isPending}
+                  className="bg-green-600 hover:bg-green-700 flex-1"
+                >
+                  {createNewServiceMutation.isPending ? "Criando..." : "Criar Serviço"}
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="outline"
+                  onClick={handleCancelNewService}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
       
       <Footer />
     </div>

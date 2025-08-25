@@ -20,6 +20,40 @@ import { updateProviderProfileSchema, insertServiceProviderSchema } from "@share
 import type { ServiceCategory } from "@shared/schema";
 import { z } from "zod";
 
+// Função para validar cidade e estado
+const validateCityState = async (location: string): Promise<boolean> => {
+  if (!location) return true;
+  
+  // Extrair cidade e estado da localização (formato: "Cidade - Estado")
+  const parts = location.split(' - ');
+  if (parts.length !== 2) return true; // Se não estiver no formato esperado, permitir
+  
+  const city = parts[0].trim();
+  const state = parts[1].trim();
+  
+  if (!city || !state) return true;
+  
+  try {
+    // Usar a API do IBGE para validar cidade e estado
+    const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${state.toUpperCase()}/municipios`);
+    const cities = await response.json();
+    
+    const cityExists = cities.some((c: any) => 
+      c.nome.toLowerCase() === city.toLowerCase()
+    );
+    
+    if (!cityExists) {
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    // Se a API falhar, permitir o envio mas mostrar aviso
+    console.warn('Não foi possível validar a cidade/estado:', error);
+    return true;
+  }
+};
+
 type ProfileForm = {
   // Campos do perfil pessoal
   bio?: string;
@@ -48,9 +82,31 @@ export default function CompleteProfile() {
   }
 
   // Fetch categories
-  const { data: categories = [] } = useQuery<ServiceCategory[]>({
+  const { data: categories = [], isLoading: categoriesLoading, error: categoriesError } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/categories"],
   });
+
+  // Debug logs
+  console.log('Categories loading:', categoriesLoading);
+  console.log('Categories error:', categoriesError);
+  console.log('Categories data:', categories);
+  console.log('API URL being called:', '/api/categories');
+
+  // Test manual API call
+  useEffect(() => {
+    const testAPI = async () => {
+      try {
+        console.log('Testing API call...');
+        const response = await fetch('/api/categories');
+        console.log('API response status:', response.status);
+        const data = await response.json();
+        console.log('API response data:', data);
+      } catch (error) {
+        console.error('API call error:', error);
+      }
+    };
+    testAPI();
+  }, []);
 
   // Create combined schema for validation
   const combinedSchema = z.object({
@@ -73,7 +129,7 @@ export default function CompleteProfile() {
     defaultValues: {
       bio: user.bio || "",
       experience: user.experience || "",
-      location: user.location || "",
+      location: user.location || (user.city && user.state ? `${user.city} - ${user.state}` : ""),
       categoryId: "",
       description: "",
       pricingTypes: ["fixed"],
@@ -89,7 +145,7 @@ export default function CompleteProfile() {
       form.reset({
         bio: user.bio || "",
         experience: user.experience || "",
-        location: user.location || "",
+        location: user.location || (user.city && user.state ? `${user.city} - ${user.state}` : ""),
         categoryId: "",
         description: "",
         pricingTypes: ["fixed"],
@@ -143,60 +199,68 @@ export default function CompleteProfile() {
         description: "Seu perfil e serviço foram configurados. Bem-vindo ao TrampoAqui!",
       });
       
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
       setLocation('/provider-dashboard');
     },
-    onError: (error: Error) => {
+    onError: (error) => {
+      console.error('Error creating profile:', error);
       toast({
         title: "Erro ao criar perfil",
-        description: error.message,
+        description: error instanceof Error ? error.message : "Tente novamente mais tarde",
         variant: "destructive",
       });
     },
   });
 
-  const onSubmit = (data: ProfileForm) => {
+  const onSubmit = async (data: ProfileForm) => {
+    // Validar cidade e estado antes de prosseguir
+    const isCityStateValid = await validateCityState(data.location);
+    if (!isCityStateValid) {
+      toast({
+        title: "Localização inválida",
+        description: "A cidade informada não foi encontrada no estado especificado. Verifique se está correta.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     createCompleteProfileMutation.mutate(data);
   };
 
-  const isLoading = createCompleteProfileMutation.isPending || isCreatingProvider;
+  const isLoading = createCompleteProfileMutation.isPending;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen flex flex-col">
       <Header />
       
-      <main className="flex-1 container mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Complete seu Perfil de Prestador
-            </h1>
+      <main className="flex-1 bg-gray-50 py-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Complete seu Perfil</h1>
             <p className="text-gray-600">
-              Preencha suas informações pessoais e profissionais para que os clientes possam conhecer você melhor
+              Configure seu perfil profissional para começar a receber solicitações de clientes
             </p>
           </div>
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* About Me Section */}
+              {/* Personal Profile Section */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Heart className="w-5 h-5 text-blue-600" />
-                    Sobre Mim
+                    <User className="w-5 h-5 text-blue-600" />
+                    Perfil Pessoal
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
                   <FormField
                     control={form.control}
                     name="bio"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Apresentação Pessoal</FormLabel>
+                        <FormLabel>Sobre você</FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="Conte um pouco sobre você, sua personalidade, o que te motiva no trabalho..."
+                            placeholder="Conte um pouco sobre você, sua experiência, especialidades..."
                             className="min-h-[100px]"
                             {...field}
                           />
@@ -205,28 +269,17 @@ export default function CompleteProfile() {
                       </FormItem>
                     )}
                   />
-                </CardContent>
-              </Card>
 
-              {/* Professional Experience Section */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Briefcase className="w-5 h-5 text-green-600" />
-                    Experiência Profissional
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
                   <FormField
                     control={form.control}
                     name="experience"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Sua Experiência *</FormLabel>
+                        <FormLabel>Experiência e qualificações *</FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="Descreva sua experiência profissional, certificações, cursos, projetos importantes que já realizou..."
-                            className="min-h-[120px]"
+                            placeholder="Descreva sua experiência, certificações, cursos, projetos relevantes..."
+                            className="min-h-[100px]"
                             {...field}
                           />
                         </FormControl>
@@ -234,31 +287,23 @@ export default function CompleteProfile() {
                       </FormItem>
                     )}
                   />
-                </CardContent>
-              </Card>
 
-              {/* Location Section */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <User className="w-5 h-5 text-purple-600" />
-                    Localização
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
                   <FormField
                     control={form.control}
                     name="location"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Onde você atende *</FormLabel>
+                        <FormLabel>Localização de atendimento *</FormLabel>
                         <FormControl>
-                          <Input 
-                            placeholder="Ex: São Paulo - SP, Região Sul, Bairro Centro"
+                          <Input
+                            placeholder="Ex: São Paulo - SP, Zona Sul"
                             {...field}
                           />
                         </FormControl>
                         <FormMessage />
+                        <p className="text-sm text-gray-500">
+                          Formato recomendado: Cidade - Estado (ex: São Paulo - SP)
+                        </p>
                       </FormItem>
                     )}
                   />
@@ -283,18 +328,27 @@ export default function CompleteProfile() {
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Escolha uma categoria" />
+                              <SelectValue placeholder={categoriesLoading ? "Carregando categorias..." : "Escolha uma categoria"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {categories.map((category) => (
-                              <SelectItem key={category.id} value={category.id}>
-                                <div className="flex items-center gap-2">
-                                  <i className={`${category.icon} text-sm`}></i>
-                                  {category.name}
-                                </div>
-                              </SelectItem>
-                            ))}
+                            {categoriesLoading ? (
+                              <div className="p-2 text-center text-gray-500">Carregando categorias...</div>
+                            ) : categories.length === 0 ? (
+                              <div className="p-2 text-center text-gray-500">Nenhuma categoria disponível</div>
+                            ) : (
+                              categories.map((category) => {
+                                console.log('Rendering category:', category);
+                                return (
+                                  <SelectItem key={category.id} value={category.id}>
+                                    <div className="flex items-center gap-2">
+                                      <i className={`${category.icon} text-sm`}></i>
+                                      {category.name}
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })
+                            )}
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -380,10 +434,10 @@ export default function CompleteProfile() {
                                       />
                                     </FormControl>
                                     <div className="space-y-1 leading-none">
-                                      <FormLabel className="font-medium">
+                                      <FormLabel className="font-normal">
                                         {item.label}
                                       </FormLabel>
-                                      <p className="text-sm text-gray-600">
+                                      <p className="text-sm text-gray-500">
                                         {item.description}
                                       </p>
                                     </div>
@@ -399,7 +453,7 @@ export default function CompleteProfile() {
                   />
 
                   {/* Pricing Values */}
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="grid md:grid-cols-3 gap-4">
                     {/* Hourly Rate */}
                     <FormField
                       control={form.control}
