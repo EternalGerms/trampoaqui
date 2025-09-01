@@ -58,7 +58,8 @@ type ProfileForm = {
   // Campos do perfil pessoal
   bio?: string;
   experience: string;
-  location: string;
+  city: string;
+  state: string;
   
   // Campos do serviço
   categoryId: string;
@@ -113,7 +114,8 @@ export default function CompleteProfile() {
     // Perfil pessoal
     bio: z.string().optional(),
     experience: z.string().min(1, "Experiência é obrigatória"),
-    location: z.string().min(1, "Localização é obrigatória"),
+    city: z.string().min(1, "Cidade é obrigatória"),
+    state: z.string().min(2, "Estado é obrigatório").max(2, "Use a sigla do estado (ex: SP)"),
     
     // Serviço
     categoryId: z.string().min(1, "Selecione uma categoria"),
@@ -129,7 +131,8 @@ export default function CompleteProfile() {
     defaultValues: {
       bio: user.bio || "",
       experience: user.experience || "",
-      location: user.location || (user.city && user.state ? `${user.city} - ${user.state}` : ""),
+      city: user.city || "",
+      state: user.state || "",
       categoryId: "",
       description: "",
       pricingTypes: ["fixed"],
@@ -145,7 +148,8 @@ export default function CompleteProfile() {
       form.reset({
         bio: user.bio || "",
         experience: user.experience || "",
-        location: user.location || (user.city && user.state ? `${user.city} - ${user.state}` : ""),
+        city: user.city || "",
+        state: user.state || "",
         categoryId: "",
         description: "",
         pricingTypes: ["fixed"],
@@ -159,13 +163,14 @@ export default function CompleteProfile() {
   const createCompleteProfileMutation = useMutation({
     mutationFn: async (data: ProfileForm) => {
       setIsCreatingProvider(true);
+      const location = `${data.city} - ${data.state}`;
       
       try {
         // 1. First update user profile
         const profileResponse = await apiRequest('PUT', '/api/auth/profile', {
           bio: data.bio,
           experience: data.experience,
-          location: data.location,
+          location: location,
         });
         const updatedUser = await profileResponse.json();
 
@@ -175,7 +180,7 @@ export default function CompleteProfile() {
           categoryId: data.categoryId,
           description: data.description,
           pricingTypes: data.pricingTypes,
-          location: data.location,
+          location: location,
           experience: data.experience,
           minHourlyRate: data.minHourlyRate || undefined,
           minDailyRate: data.minDailyRate || undefined,
@@ -213,7 +218,8 @@ export default function CompleteProfile() {
 
   const onSubmit = async (data: ProfileForm) => {
     // Validar cidade e estado antes de prosseguir
-    const isCityStateValid = await validateCityState(data.location);
+    const location = `${data.city} - ${data.state}`;
+    const isCityStateValid = await validateCityState(location);
     if (!isCityStateValid) {
       toast({
         title: "Localização inválida",
@@ -288,25 +294,51 @@ export default function CompleteProfile() {
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="location"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Localização de atendimento *</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Ex: São Paulo - SP, Zona Sul"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                        <p className="text-sm text-gray-500">
-                          Formato recomendado: Cidade - Estado (ex: São Paulo - SP)
-                        </p>
-                      </FormItem>
-                    )}
-                  />
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Briefcase className="w-5 h-5 text-green-600" />
+                        Localização de Atendimento
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="city"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Cidade *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="Ex: Chavantes"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="state"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Estado (UF) *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="Ex: SP"
+                                  maxLength={2}
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
                 </CardContent>
               </Card>
 

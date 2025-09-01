@@ -38,7 +38,6 @@ import { authManager, authenticatedRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import ClientReviewDialog from "@/components/client-review-dialog";
-import ClientReviewButton from "@/components/client-review-button";
 import { 
   ServiceProvider, 
   ServiceRequest, 
@@ -53,13 +52,14 @@ const updateProviderSchema = z.object({
 });
 
 const newServiceSchema = z.object({
-  categoryId: z.string().min(1, "Categoria é obrigatória"),
-  description: z.string().min(20, "Descrição deve ter pelo menos 20 caracteres"),
-  pricingTypes: z.array(z.enum(['hourly', 'daily', 'fixed'])).min(1, "Selecione pelo menos um tipo de preço"),
+  categoryId: z.string().min(1, "Selecione uma categoria"),
+  description: z.string().min(10, "Descrição deve ter pelo menos 10 caracteres"),
+  pricingTypes: z.array(z.string()).min(1, "Selecione pelo menos um tipo de preço"),
   minHourlyRate: z.string().optional(),
   minDailyRate: z.string().optional(),
   minFixedRate: z.string().optional(),
-  location: z.string().min(3, "Localização deve ter pelo menos 3 caracteres"),
+  city: z.string().min(1, "Cidade é obrigatória"),
+  state: z.string().min(2, "Estado (UF) é obrigatório").max(2, "Use a sigla do estado"),
 });
 
 const counterProposalSchema = z.object({
@@ -143,6 +143,17 @@ type RequestWithClient = ServiceRequest & {
     createdAt: Date;
     proposer: { id: string; name: string; email: string };
   }>;
+  reviews?: Array<{
+    id: string;
+    requestId: string;
+    reviewerId: string;
+    revieweeId: string;
+    rating: number;
+    comment?: string | null;
+    createdAt: Date;
+  }>;
+  clientCompletedAt?: string | null;
+  providerCompletedAt?: string | null;
 };
 
 type ClientRequest = ServiceRequest & {
@@ -166,6 +177,15 @@ type ClientRequest = ServiceRequest & {
     status: string;
     createdAt: Date;
     proposer: { id: string; name: string; email: string };
+  }>;
+  reviews?: Array<{
+    id: string;
+    requestId: string;
+    reviewerId: string;
+    revieweeId: string;
+    rating: number;
+    comment?: string | null;
+    createdAt: Date;
   }>;
 };
 
@@ -292,7 +312,8 @@ export default function ProviderDashboard() {
       minHourlyRate: "",
       minDailyRate: "",
       minFixedRate: "",
-      location: provider?.location || (provider?.user?.city && provider?.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
+      city: provider?.user?.city || "",
+      state: provider?.user?.state || "",
     },
   });
 
@@ -356,8 +377,11 @@ export default function ProviderDashboard() {
 
   const createNewServiceMutation = useMutation({
     mutationFn: async (data: NewServiceForm) => {
+      const { city, state, ...serviceData } = data;
+      const location = `${city} - ${state}`;
       const response = await authenticatedRequest('POST', `/api/providers`, {
-        ...data,
+        ...serviceData,
+        location,
         userId: user?.id,
       });
       return response.json();
@@ -375,7 +399,8 @@ export default function ProviderDashboard() {
         minHourlyRate: "",
         minDailyRate: "",
         minFixedRate: "",
-        location: provider?.location || (provider?.user?.city && provider?.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
+        city: provider?.user?.city || "",
+        state: provider?.user?.state || "",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
     },
@@ -658,7 +683,8 @@ export default function ProviderDashboard() {
       minHourlyRate: "",
       minDailyRate: "",
       minFixedRate: "",
-      location: provider?.location || (provider?.user?.city && provider?.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
+      city: provider?.user?.city || "",
+      state: provider?.user?.state || "",
     });
   };
 
@@ -903,6 +929,19 @@ export default function ProviderDashboard() {
                           <span className="text-gray-600">Ganhos este mês:</span>
                           <span className="font-medium text-green-600">R$ {monthlyEarnings.toFixed(2)}</span>
                         </div>
+                      </div>
+                      
+                      {/* Botão Ver Perfil */}
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <Button 
+                          onClick={() => setLocation(`/provider-profile/${provider.id}`)}
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                        >
+                          <User className="w-4 h-4 mr-2" />
+                          Ver Perfil
+                        </Button>
                       </div>
                     </>
                   ) : (
@@ -1734,7 +1773,7 @@ export default function ProviderDashboard() {
                             </div>
                           )}
                           
-                          {(request.status === 'accepted' || request.status === 'pending_completion') && (
+                          {(request.status === 'accepted' || request.status === 'pending_completion') && !request.providerCompletedAt && (
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button 
@@ -1776,10 +1815,27 @@ export default function ProviderDashboard() {
                           )}
                           
                                                   {request.status === 'completed' && (
-                            <ClientReviewButton
-                              requestId={request.id}
-                              onOpenReview={() => handleOpenClientReviewDialog(request)}
-                            />
+                            (() => {
+                              const hasProviderReviewed = request.reviews?.some(review => review.reviewerId === user?.id);
+                              if (hasProviderReviewed) {
+                                return (
+                                  <Button size="sm" disabled>
+                                    <CheckCircle className="w-4 h-4 mr-2" />
+                                    Cliente Avaliado
+                                  </Button>
+                                );
+                              }
+                              return (
+                                <Button 
+                                  size="sm"
+                                  onClick={() => handleOpenClientReviewDialog(request)}
+                                  className="bg-blue-600 hover:bg-blue-700"
+                                >
+                                  <Star className="w-4 h-4 mr-2" />
+                                  Avaliar Cliente
+                                </Button>
+                              );
+                            })()
                           )}
                         </div>
                       );
@@ -2155,19 +2211,34 @@ export default function ProviderDashboard() {
                 )}
               </div>
 
-              <FormField
-                control={newServiceForm.control}
-                name="location"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Localização</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Cidade/Bairro onde atende" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={newServiceForm.control}
+                  name="city"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cidade</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Sua cidade" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={newServiceForm.control}
+                  name="state"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Estado (UF)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="SP" maxLength={2} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <div className="flex gap-3 pt-4">
                 <Button 

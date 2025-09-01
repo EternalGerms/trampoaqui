@@ -48,7 +48,32 @@ export default function Header() {
             {currentUser ? (
               <div className="flex items-center space-x-3">
                 <span className="text-gray-700 hidden sm:block">
-                  Olá, {currentUser.name}
+                  Olá,{" "}
+                  <button
+                    onClick={() => {
+                      // Se for prestador, redireciona para o perfil público
+                      if (currentUser.is_provider_enabled) {
+                        // Buscar o primeiro provider do usuário
+                        fetch(`/api/providers?userId=${currentUser.id}`)
+                          .then(res => res.json())
+                          .then(providers => {
+                            if (providers && providers.length > 0) {
+                              window.location.href = `/provider-profile/${providers[0].id}`;
+                            } else {
+                              window.location.href = '/provider-dashboard';
+                            }
+                          })
+                          .catch(() => {
+                            window.location.href = '/provider-dashboard';
+                          });
+                      } else {
+                        window.location.href = '/dashboard';
+                      }
+                    }}
+                    className="text-primary-600 hover:text-primary-700 font-medium cursor-pointer underline decoration-dotted"
+                  >
+                    {currentUser.name}
+                  </button>
                 </span>
                 <Button
                   variant="outline"

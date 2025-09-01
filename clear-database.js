@@ -40,9 +40,9 @@ async function clearDatabase() {
     console.log('🗑️  Limpando tabela service_providers...');
     await client.query('DELETE FROM service_providers');
     
-    // 2. Tabelas independentes
-    console.log('🗑️  Limpando tabela service_categories...');
-    await client.query('DELETE FROM service_categories');
+    // 2. Tabelas independentes (preservando categorias de serviço)
+    console.log('ℹ️  Preservando tabela service_categories...');
+    // Não deletar categorias de serviço para manter a funcionalidade do sistema
     
     console.log('🗑️  Limpando tabela users...');
     await client.query('DELETE FROM users');
@@ -59,8 +59,6 @@ async function clearDatabase() {
     const result = await client.query(`
       SELECT 
         'users' as table_name, COUNT(*) as row_count FROM users
-      UNION ALL
-      SELECT 'service_categories', COUNT(*) FROM service_categories
       UNION ALL
       SELECT 'service_providers', COUNT(*) FROM service_providers
       UNION ALL

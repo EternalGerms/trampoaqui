@@ -1,135 +1,103 @@
-# Limpeza do Banco de Dados - TrampoAqui
+# Scripts de Limpeza do Banco de Dados - TrampoAqui
 
-Este documento explica como limpar todos os dados do banco de dados mantendo a estrutura das tabelas.
+## 📋 Visão Geral
 
-## ⚠️ ATENÇÃO
+Este diretório contém scripts para limpar dados do banco de dados TrampoAqui, **preservando as categorias de serviço** para manter a funcionalidade do sistema.
 
-**Esta operação é irreversível!** Todos os dados serão perdidos permanentemente. Certifique-se de que:
-- Você tem backup dos dados importantes
-- Está no ambiente correto (não em produção)
-- Entende as consequências da operação
+## 🚨 Importante
 
-## 🗂️ Arquivos Criados
+**As categorias de serviço NÃO são mais excluídas** durante a limpeza para evitar que o sistema fique sem categorias disponíveis.
 
-1. **`clear-database.sql`** - Script SQL puro para execução direta no PostgreSQL
-2. **`clear-database.js`** - Script Node.js usando conexão direta
-3. **`scripts/clear-db.ts`** - Script TypeScript integrado ao projeto
-4. **`package.json`** - Comando npm adicionado
+## 📁 Arquivos Disponíveis
 
-## 🚀 Como Executar
+### Scripts de Limpeza (Modificados)
+- `clear-database.js` - Script JavaScript para limpeza
+- `clear-database.sql` - Script SQL para limpeza
+- `scripts/clear-db.ts` - Script TypeScript para limpeza
 
-### Opção 1: Script NPM (Recomendado)
+### Scripts de Restauração de Categorias
+- `restore-categories.js` - Script JavaScript para restaurar categorias
+- `restore-categories.sql` - Script SQL para restaurar categorias
+- `scripts/restore-categories.ts` - Script TypeScript para restaurar categorias
 
-```bash
-# Certifique-se de que o banco está rodando
-npm run docker:up
+## 🔧 Como Usar
 
-# Execute o script de limpeza
-npm run db:clear
-```
-
-### Opção 2: Script SQL Direto
+### 1. Limpeza do Banco (Preserva Categorias)
 
 ```bash
-# Conecte ao banco PostgreSQL
-psql -h localhost -p 5433 -U trampoaqui -d trampoaqui
-
-# Execute o script
-\i clear-database.sql
-```
-
-### Opção 3: Script Node.js
-
-```bash
-# Certifique-se de que o banco está rodando
-npm run docker:up
-
-# Execute o script
+# JavaScript
 node clear-database.js
+
+# TypeScript
+cd scripts && npx tsx clear-db.ts
+
+# SQL (via psql ou pgAdmin)
+psql -h localhost -p 5433 -U trampoaqui -d trampoaqui -f clear-database.sql
 ```
 
-## 📊 Tabelas que Serão Limpas
+### 2. Restauração de Categorias (Se Necessário)
 
-O script limpa as seguintes tabelas na ordem correta (respeitando dependências):
-
-1. **`messages`** - Mensagens entre usuários
-2. **`reviews`** - Avaliações de serviços
-3. **`negotiations`** - Histórico de negociações
-4. **`service_requests`** - Solicitações de serviços
-5. **`service_providers`** - Perfis de prestadores
-6. **`service_categories`** - Categorias de serviços
-7. **`users`** - Usuários do sistema
-
-## 🔧 Configuração do Banco
-
-O script usa as seguintes configurações (do `docker-compose.yml`):
-- **Host**: localhost
-- **Porta**: 5433
-- **Usuário**: trampoaqui
-- **Senha**: trampoaqui123
-- **Banco**: trampoaqui
-
-## ✅ Verificação
-
-Após a execução, o script mostrará:
-- Confirmação de conexão
-- Progresso da limpeza de cada tabela
-- Contagem de registros em cada tabela (deve ser 0)
-- Mensagem de sucesso
-
-## 🚨 Solução de Problemas
-
-### Erro de Conexão
 ```bash
-# Verifique se o Docker está rodando
-docker ps
+# JavaScript
+node restore-categories.js
 
-# Inicie o banco se necessário
-npm run docker:up
+# TypeScript
+cd scripts && npx tsx restore-categories.ts
 
-# Verifique logs
-npm run docker:logs
+# SQL (via psql ou pgAdmin)
+psql -h localhost -p 5433 -U trampoaqui -d trampoaqui -f restore-categories.sql
 ```
 
-### Erro de Permissão
+## 📊 O que é Limpo
+
+✅ **Tabelas que SÃO limpas:**
+- `users` - Todos os usuários
+- `service_providers` - Todos os prestadores de serviço
+- `service_requests` - Todas as solicitações de serviço
+- `negotiations` - Todas as negociações
+- `reviews` - Todas as avaliações
+- `messages` - Todas as mensagens
+
+🛡️ **Tabelas que NÃO são limpas:**
+- `service_categories` - Categorias de serviço (preservadas)
+
+## 🎯 Categorias de Serviço Disponíveis
+
+O sistema inclui as seguintes categorias padrão:
+
+1. **Eletricista** - `fas fa-bolt`
+2. **Encanador** - `fas fa-wrench`
+3. **Faxineira** - `fas fa-broom`
+4. **Pintor** - `fas fa-paint-roller`
+5. **Jardineiro** - `fas fa-seedling`
+6. **Marido de Aluguel** - `fas fa-tools`
+7. **Pedreiro** - `fas fa-hammer`
+8. **Técnico de Informática** - `fas fa-laptop`
+9. **Manutenção de Ar Condicionado** - `fas fa-snowflake`
+10. **Limpeza de Piscina** - `fas fa-swimming-pool`
+11. **Instalação de Móveis** - `fas fa-couch`
+12. **Serviços de Transporte** - `fas fa-truck`
+
+## ⚠️ Avisos
+
+- **Backup**: Sempre faça backup antes de executar scripts de limpeza
+- **Ambiente**: Execute apenas em ambiente de desenvolvimento/teste
+- **Conexão**: Certifique-se de que o banco está rodando na porta 5433
+- **Permissões**: Verifique se o usuário tem permissões adequadas
+
+## 🔄 Recuperação
+
+Se por algum motivo as categorias forem perdidas, use um dos scripts de restauração:
+
 ```bash
-# Verifique se o usuário tem permissões
-psql -h localhost -p 5433 -U trampoaqui -d trampoaqui -c "SELECT current_user;"
+# Verificar se existem categorias
+psql -h localhost -p 5433 -U trampoaqui -d trampoaqui -c "SELECT COUNT(*) FROM service_categories;"
+
+# Restaurar categorias se necessário
+npx tsx scripts/restore-categories.ts
 ```
 
-### Erro de Dependências
-```bash
-# Instale dependências se necessário
-npm install
+## 📝 Histórico de Mudanças
 
-# Verifique se tsx está instalado
-npm install -g tsx
-```
-
-## 🔄 Restaurar Dados
-
-Se você precisar restaurar dados após a limpeza:
-
-1. **Backup anterior**: Use `pg_restore` ou `psql` com arquivo de backup
-2. **Dados de teste**: Execute os scripts de inicialização em `init-db/`
-3. **Dados de desenvolvimento**: Use `npm run docker:down && npm run docker:up` para resetar completamente
-
-## 📝 Logs
-
-O script gera logs detalhados no console. Em caso de erro, verifique:
-- Mensagens de erro específicas
-- Estado das tabelas antes da limpeza
-- Permissões de usuário do banco
-- Configuração de conexão
-
-## 🎯 Uso Típico
-
-Este script é útil para:
-- **Desenvolvimento**: Limpar dados de teste
-- **Testes**: Resetar ambiente para testes automatizados
-- **Debugging**: Remover dados corrompidos
-- **Deploy**: Preparar banco para nova instalação
-
----
-
-**Lembre-se**: Sempre faça backup antes de executar este script em qualquer ambiente!
+- **v2.0**: Scripts modificados para preservar categorias de serviço
+- **v1.0**: Scripts originais que limpavam todas as tabelas

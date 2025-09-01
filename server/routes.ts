@@ -655,12 +655,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Check if a service request has been reviewed
-  app.get("/api/reviews/request/:requestId", authenticateToken, async (req: Request, res: Response) => {
+  // Get reviews by provider user id
+  app.get("/api/providers/:userId/reviews", async (req: Request, res: Response) => {
     try {
-      const review = await storage.getReviewByRequest(req.params.requestId);
-      res.json({ hasReview: !!review, review });
+      const reviews = await storage.getReviewsByProvider(req.params.userId);
+      res.json(reviews);
     } catch (error) {
+      console.error("Error fetching provider reviews:", error);
       res.status(500).json({ message: "Server error" });
     }
   });

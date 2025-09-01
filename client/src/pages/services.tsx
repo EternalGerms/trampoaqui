@@ -101,6 +101,10 @@ export default function Services() {
   }, [allProviders, searchQuery, location, sortBy]);
 
   const handleContactProvider = (providerId: string) => {
+    setLocation(`/provider-profile/${providerId}`);
+  };
+
+  const handleViewService = (providerId: string) => {
     setLocation(`/provider/${providerId}`);
   };
 
@@ -204,6 +208,7 @@ export default function Services() {
                   key={provider.id}
                   provider={provider}
                   onContact={handleContactProvider}
+                  onViewService={handleViewService}
                 />
               ))}
             </div>

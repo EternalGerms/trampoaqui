@@ -437,35 +437,36 @@ export default function Register() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Número</FormLabel>
-                        <div className="space-y-2">
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              id="hasNumber"
-                              checked={form.watch('hasNumber')}
-                              onChange={(e) => {
-                                form.setValue('hasNumber', e.target.checked);
-                                if (!e.target.checked) {
-                                  form.setValue('number', '');
-                                }
-                              }}
-                              className="rounded border-gray-300"
-                            />
-                            <label htmlFor="hasNumber" className="text-sm text-gray-600">
-                              Residência possui número
-                            </label>
-                          </div>
-                          
-                          {form.watch('hasNumber') && (
-                            <FormControl>
-                              <Input placeholder="123" {...field} />
-                            </FormControl>
-                          )}
-                        </div>
+                        <FormControl>
+                          <Input 
+                            placeholder="123" 
+                            {...field} 
+                            disabled={!form.watch('hasNumber')}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                </div>
+
+                {/* Checkbox para residência sem número */}
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="hasNumber"
+                    checked={!form.watch('hasNumber')}
+                    onChange={(e) => {
+                      form.setValue('hasNumber', !e.target.checked);
+                      if (e.target.checked) {
+                        form.setValue('number', '');
+                      }
+                    }}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="hasNumber" className="text-sm text-gray-600">
+                    Sem número
+                  </label>
                 </div>
 
                 {/* Complemento */}

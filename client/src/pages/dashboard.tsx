@@ -21,7 +21,6 @@ import { z } from "zod";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import ReviewDialog from "@/components/review-dialog";
-import ReviewButton from "@/components/review-button";
 import { 
   User, 
   Briefcase, 
@@ -39,6 +38,16 @@ import {
   CheckCircle
 } from "lucide-react";
 
+interface Review {
+  id: string;
+  requestId: string;
+  reviewerId: string;
+  revieweeId: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: Date;
+}
+
 interface ServiceRequest {
   id: string;
   title: string;
@@ -47,6 +56,8 @@ interface ServiceRequest {
   proposedPrice: string;
   scheduledDate: string;
   createdAt: string;
+  clientCompletedAt?: string;
+  providerCompletedAt?: string;
   provider: {
     id: string;
     user: {
@@ -72,6 +83,7 @@ interface ServiceRequest {
       email: string; 
     };
   }>;
+  reviews?: Review[];
 }
 
 export default function Dashboard() {
@@ -220,6 +232,19 @@ export default function Dashboard() {
     status === 'cancelled' ? 'Cancelado' :
     status;
 
+  // Function to get display status text considering the actual request status
+  const getDisplayStatusText = (request: ServiceRequest) => {
+    const effectiveStatus = getEffectiveRequestStatus(request);
+    
+    // If the effective status is 'accepted' but the actual status is 'pending_completion',
+    // show a more appropriate message
+    if (effectiveStatus === 'accepted' && request.status === 'pending_completion') {
+      return 'Aguardando Confirmação';
+    }
+    
+    return getStatusText(effectiveStatus);
+  };
+
   // Function to check if service date has passed
   const checkServiceDate = (request: ServiceRequest) => {
     if (!request.scheduledDate) return false;
@@ -233,10 +258,17 @@ export default function Dashboard() {
     try {
       const response = await apiRequest('PUT', `/api/requests/${requestId}`, { status });
       if (response.ok) {
-        toast({
-          title: "Status atualizado!",
-          description: "O status da solicitação foi alterado com sucesso.",
-        });
+        if (status === 'completed') {
+          toast({
+            title: "Serviço marcado como concluído!",
+            description: "O prestador será notificado sobre a confirmação de conclusão.",
+          });
+        } else {
+          toast({
+            title: "Status atualizado!",
+            description: "O status da solicitação foi alterado com sucesso.",
+          });
+        }
         queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
       }
     } catch (error) {
@@ -306,9 +338,10 @@ export default function Dashboard() {
       return request.status;
     }
 
-    // If request is pending_completion, show as negotiating for the client
+    // If request is pending_completion, show as accepted for the client
+    // since the service was already accepted and is just waiting for completion confirmation
     if (request.status === 'pending_completion') {
-      return 'negotiating';
+      return 'accepted';
     }
 
     // If request is pending and has no negotiations, return pending
@@ -427,7 +460,7 @@ export default function Dashboard() {
                                 <div className="flex items-center gap-3 mb-2">
                                   <h3 className="font-semibold text-gray-900">{request.title}</h3>
                                   <Badge className={getStatusColor(getEffectiveRequestStatus(request))}>
-                                    {getStatusText(getEffectiveRequestStatus(request))}
+                                    {getDisplayStatusText(request)}
                                   </Badge>
                                 </div>
 
@@ -494,7 +527,8 @@ export default function Dashboard() {
 
                                 {/* Action buttons based on status */}
                                 <div className="flex gap-2">
-                                  {getEffectiveRequestStatus(request) === 'pending' && (
+                                  {/* Only show counter proposal button when there are negotiations in progress */}
+                                  {getEffectiveRequestStatus(request) === 'negotiating' && request.negotiations && request.negotiations.length > 0 && (
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -508,17 +542,42 @@ export default function Dashboard() {
                                     </Button>
                                   )}
                                   
-                                  {getEffectiveRequestStatus(request) === 'completed' && (
+                                  {/* Show "Marcar como Concluído" button when service is pending completion and client has not confirmed yet */}
+                                  {request.status === 'pending_completion' && !request.clientCompletedAt && (
                                     <Button
                                       size="sm"
-                                      onClick={() => {
-                                        setSelectedRequestForReview(request);
-                                        setReviewDialogOpen(true);
-                                      }}
+                                      onClick={() => handleUpdateRequestStatus(request.id, 'completed')}
+                                      className="bg-green-600 hover:bg-green-700"
                                     >
-                                      <Star className="w-4 h-4 mr-2" />
-                                      Avaliar
+                                      <CheckCircle className="w-4 h-4 mr-2" />
+                                      Marcar como Concluído
                                     </Button>
+                                  )}
+                                  
+                                  {getEffectiveRequestStatus(request) === 'completed' && (
+                                    (() => {
+                                      const hasClientReviewed = request.reviews?.some(review => review.reviewerId === currentUser?.id);
+                                      if (hasClientReviewed) {
+                                        return (
+                                          <Button size="sm" disabled>
+                                            <CheckCircle className="w-4 h-4 mr-2" />
+                                            Avaliado
+                                          </Button>
+                                        );
+                                      }
+                                      return (
+                                        <Button
+                                          size="sm"
+                                          onClick={() => {
+                                            setSelectedRequestForReview(request);
+                                            setReviewDialogOpen(true);
+                                          }}
+                                        >
+                                          <Star className="w-4 h-4 mr-2" />
+                                          Avaliar
+                                        </Button>
+                                      );
+                                    })()
                                   )}
                                 </div>
                               </div>

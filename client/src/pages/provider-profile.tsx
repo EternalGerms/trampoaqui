@@ -11,11 +11,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Star, MapPin, Phone, Mail, MessageCircle, Calendar, Edit } from "lucide-react";
+import { Star, MapPin, Phone, Mail, Calendar, Edit, User as UserIcon } from "lucide-react";
 import { authManager, authenticatedRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { ServiceProvider, User, ServiceCategory, insertServiceProviderSchema } from "@shared/schema";
+import { ServiceProvider, User, ServiceCategory, insertServiceProviderSchema, Review } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -49,9 +49,7 @@ const requestSchema = z.object({
   path: ["proposedPrice"]
 });
 
-const messageSchema = z.object({
-  content: z.string().min(1, "Mensagem não pode estar vazia"),
-});
+
 
 const editProviderSchema = insertServiceProviderSchema.omit({ userId: true });
 
@@ -90,7 +88,7 @@ const validateCityState = async (location: string): Promise<boolean> => {
 };
 
 type RequestForm = z.infer<typeof requestSchema>;
-type MessageForm = z.infer<typeof messageSchema>;
+
 type EditProviderForm = z.infer<typeof editProviderSchema>;
 
 type ProviderWithDetails = ServiceProvider & { 
@@ -100,12 +98,16 @@ type ProviderWithDetails = ServiceProvider & {
   reviewCount: number 
 };
 
+type ReviewWithUser = Review & {
+  reviewer: User;
+};
+
 export default function ProviderProfile() {
   const params = useParams();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [showRequestForm, setShowRequestForm] = useState(false);
-  const [showMessageForm, setShowMessageForm] = useState(false);
+
   const [showEditForm, setShowEditForm] = useState(false);
   const providerId = params.id;
 
@@ -122,6 +124,16 @@ export default function ProviderProfile() {
       return response.json();
     },
     enabled: !!providerId,
+  });
+
+  const { data: reviews = [] } = useQuery<ReviewWithUser[]>({
+    queryKey: ["/api/providers", provider?.userId, "reviews"],
+    queryFn: async () => {
+      const response = await fetch(`/api/providers/${provider!.userId}/reviews`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!provider?.userId,
   });
 
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
@@ -189,12 +201,7 @@ export default function ProviderProfile() {
     },
   });
 
-  const messageForm = useForm<MessageForm>({
-    resolver: zodResolver(messageSchema),
-    defaultValues: {
-      content: "",
-    },
-  });
+
 
   const editForm = useForm<EditProviderForm>({
     resolver: zodResolver(editProviderSchema),
@@ -230,30 +237,7 @@ export default function ProviderProfile() {
     }
   }, [provider, editForm]);
 
-  const sendMessageMutation = useMutation({
-    mutationFn: async (data: MessageForm) => {
-      const response = await authenticatedRequest('POST', '/api/messages', {
-        content: data.content,
-        receiverId: provider?.userId,
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Mensagem enviada!",
-        description: "O prestador receberá sua mensagem.",
-      });
-      setShowMessageForm(false);
-      messageForm.reset();
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao enviar mensagem",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    },
-  });
+
 
   const updateProviderMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -302,9 +286,7 @@ export default function ProviderProfile() {
     createRequestMutation.mutate(data);
   };
 
-  const onMessageSubmit = (data: MessageForm) => {
-    sendMessageMutation.mutate(data);
-  };
+
 
   const onEditSubmit = async (data: EditProviderForm) => {
     // Validar cidade e estado antes de prosseguir
@@ -431,6 +413,45 @@ export default function ProviderProfile() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Reviews Section */}
+            {reviews.length > 0 && (
+              <Card className="mt-8">
+                <CardHeader>
+                  <CardTitle>Avaliações Recentes</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {reviews.map((review) => (
+                    <div key={review.id} className="border-t pt-4 first:border-t-0 first:pt-0">
+                      <div className="flex items-start space-x-4">
+                        <div className="flex-shrink-0 w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                          <UserIcon className="w-5 h-5 text-gray-500" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-semibold text-gray-900">{review.reviewer.name}</h4>
+                            <span className="text-sm text-gray-500">
+                              {new Date(review.createdAt).toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                          <div className="flex items-center my-1">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`w-4 h-4 ${
+                                  i < review.rating ? 'text-yellow-400 fill-current' : 'text-gray-300'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          {review.comment && <p className="text-gray-600">{review.comment}</p>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Action Panel */}
@@ -488,10 +509,10 @@ export default function ProviderProfile() {
                     <Button 
                       variant="outline" 
                       className="w-full"
-                      onClick={() => setShowMessageForm(true)}
+                      onClick={() => setLocation(`/provider/${provider.id}`)}
                     >
-                      <MessageCircle className="w-4 h-4 mr-2" />
-                      Enviar Mensagem
+                      <UserIcon className="w-4 h-4 mr-2" />
+                      Visualizar Perfil
                     </Button>
                   </div>
                 ) : null}
@@ -702,57 +723,7 @@ export default function ProviderProfile() {
           </div>
         )}
 
-        {/* Message Form Modal */}
-        {showMessageForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <Card className="w-full max-w-md">
-              <CardHeader>
-                <CardTitle>Enviar Mensagem</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Form {...messageForm}>
-                  <form onSubmit={messageForm.handleSubmit(onMessageSubmit)} className="space-y-4">
-                    <FormField
-                      control={messageForm.control}
-                      name="content"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Sua mensagem</FormLabel>
-                          <FormControl>
-                            <Textarea 
-                              placeholder="Digite sua mensagem..." 
-                              rows={4}
-                              {...field} 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <div className="flex gap-3">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setShowMessageForm(false)}
-                        className="flex-1"
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        type="submit"
-                        disabled={sendMessageMutation.isPending}
-                        className="flex-1 bg-primary-600 hover:bg-primary-700"
-                      >
-                        {sendMessageMutation.isPending ? "Enviando..." : "Enviar"}
-                      </Button>
-                    </div>
-                  </form>
-                </Form>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+
 
         {/* Edit Form Modal */}
         {showEditForm && (

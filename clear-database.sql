@@ -13,8 +13,8 @@ DELETE FROM negotiations;
 DELETE FROM service_requests;
 DELETE FROM service_providers;
 
--- 2. Tabelas independentes
-DELETE FROM service_categories;
+-- 2. Tabelas independentes (preservando categorias de serviço)
+-- DELETE FROM service_categories; -- Comentado para preservar categorias
 DELETE FROM users;
 
 -- Reabilitar verificação de chaves estrangeiras
@@ -23,8 +23,6 @@ SET session_replication_role = DEFAULT;
 -- Verificar se as tabelas estão vazias
 SELECT 
     'users' as table_name, COUNT(*) as row_count FROM users
-UNION ALL
-SELECT 'service_categories', COUNT(*) FROM service_categories
 UNION ALL
 SELECT 'service_providers', COUNT(*) FROM service_providers
 UNION ALL

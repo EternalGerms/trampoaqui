@@ -1,4 +1,4 @@
-import { apiRequest } from "./queryClient";
+import { apiRequest, queryClient } from "./queryClient";
 
 export interface User {
   id: string;
@@ -71,6 +71,7 @@ class AuthManager {
     this.user = null;
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    queryClient.clear();
   }
 
   getToken(): string | null {

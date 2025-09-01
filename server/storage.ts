@@ -55,21 +55,22 @@ export interface IStorage {
   getServiceRequestsByClientWithNegotiations(clientId: string): Promise<(ServiceRequest & { 
     provider: ServiceProvider & { user: User };
     negotiations: (Negotiation & { proposer: User })[];
+    reviews: Review[];
   })[]>;
   getServiceRequestsByProvider(providerId: string): Promise<ServiceRequest[]>;
   getServiceRequestsByProviderWithClient(providerId: string): Promise<(ServiceRequest & { client: User })[]>;
   getServiceRequestsByProviderWithNegotiations(providerId: string): Promise<(ServiceRequest & { 
     client: User;
     negotiations: (Negotiation & { proposer: User })[];
+    reviews: Review[];
   })[]>;
   createServiceRequest(request: InsertServiceRequest): Promise<ServiceRequest>;
   updateServiceRequest(id: string, request: Partial<InsertServiceRequest>): Promise<ServiceRequest>;
   updateRequestStatus(requestId: string, status: string): Promise<void>;
   
   // Review operations
-  getReviewsByProvider(providerId: string): Promise<Review[]>;
+  getReviewsByProvider(providerId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
   createReview(review: InsertReview): Promise<Review>;
-  getReviewByRequest(requestId: string): Promise<Review | undefined>;
   
   // Message operations
   getMessagesByRequest(requestId: string): Promise<Message[]>;
@@ -281,64 +282,63 @@ export class DatabaseStorage implements IStorage {
   async getServiceRequestsByClientWithNegotiations(clientId: string): Promise<(ServiceRequest & { 
     provider: ServiceProvider & { user: User };
     negotiations: (Negotiation & { proposer: User })[];
+    reviews: Review[];
   })[]> {
-    console.log(`[Storage] Fetching client requests for user: ${clientId}`);
-    
-    const result = await db
-      .select({
-        request: serviceRequests,
-        provider: serviceProviders,
-        providerUser: users,
-      })
+    const rows = await db
+      .select()
       .from(serviceRequests)
       .innerJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
       .innerJoin(users, eq(serviceProviders.userId, users.id))
+      .leftJoin(negotiations, eq(negotiations.requestId, serviceRequests.id))
+      .leftJoin(reviews, eq(reviews.requestId, serviceRequests.id))
       .where(eq(serviceRequests.clientId, clientId))
-      .orderBy(desc(serviceRequests.createdAt));
+      .orderBy(desc(serviceRequests.createdAt), desc(negotiations.createdAt));
 
-    console.log(`[Storage] Raw query result:`, result.length, "rows");
-    if (result.length > 0) {
-      console.log(`[Storage] First row:`, {
-        requestId: result[0].request?.id,
-        providerId: result[0].request?.providerId,
-        hasProvider: !!result[0].provider,
-        hasProviderUser: !!result[0].providerUser
-      });
+    const requestsMap = new Map<string, any>();
+
+    for (const row of rows) {
+      const { service_requests: request, service_providers: provider, users: providerUser, negotiations: negotiation, reviews: review } = row;
+      if (!requestsMap.has(request.id)) {
+        requestsMap.set(request.id, {
+          ...request,
+          provider: {
+            ...provider,
+            user: providerUser,
+          },
+          negotiations: [],
+          reviews: [],
+        });
+      }
+
+      const existingRequest = requestsMap.get(request.id)!;
+
+      if (negotiation && !existingRequest.negotiations.some((n: any) => n.id === negotiation.id)) {
+        // Since we don't have proposer data here, we'll fetch it separately or adjust the query.
+        // For now, let's keep it simple. A better query would join users on proposerId as well.
+        existingRequest.negotiations.push(negotiation);
+      }
+      
+      if (review && !existingRequest.reviews.some((r: any) => r.id === review.id)) {
+        existingRequest.reviews.push(review);
+      }
+    }
+    
+    const finalRequests = Array.from(requestsMap.values());
+    
+    // Fetch proposers for negotiations - this is still N+1 but better than before on the main query
+    for (const request of finalRequests) {
+        if (request.negotiations.length > 0) {
+            const proposerIds = request.negotiations.map((n: Negotiation) => n.proposerId);
+            const proposers = await db.select().from(users).where(or(...proposerIds.map((id: string) => eq(users.id, id))));
+            const proposersMap = new Map(proposers.map(p => [p.id, p]));
+            request.negotiations = request.negotiations.map((n: Negotiation) => ({
+                ...n,
+                proposer: proposersMap.get(n.proposerId),
+            }));
+        }
     }
 
-    const requests = result.map(row => ({
-      ...row.request,
-      provider: {
-        ...row.provider,
-        user: row.providerUser,
-      },
-    }));
-
-    // Fetch negotiations for each request
-    const requestsWithNegotiations = [];
-    for (const request of requests) {
-      const negotiationResults = await db
-        .select({
-          negotiation: negotiations,
-          proposer: users,
-        })
-        .from(negotiations)
-        .innerJoin(users, eq(negotiations.proposerId, users.id))
-        .where(eq(negotiations.requestId, request.id))
-        .orderBy(desc(negotiations.createdAt));
-
-      const requestWithNegotiations = {
-        ...request,
-        negotiations: negotiationResults.map(row => ({
-          ...row.negotiation,
-          proposer: row.proposer,
-        })),
-      };
-
-      requestsWithNegotiations.push(requestWithNegotiations);
-    }
-
-    return requestsWithNegotiations;
+    return finalRequests;
   }
 
   async getServiceRequestsByProvider(providerId: string): Promise<ServiceRequest[]> {
@@ -369,56 +369,58 @@ export class DatabaseStorage implements IStorage {
   async getServiceRequestsByProviderWithNegotiations(providerId: string): Promise<(ServiceRequest & { 
     client: User;
     negotiations: (Negotiation & { proposer: User })[];
+    reviews: Review[];
   })[]> {
-    console.log(`[Storage] Fetching requests for provider: ${providerId}`);
-    
-    const result = await db
-      .select({
-        request: serviceRequests,
-        client: users,
-      })
+    const rows = await db
+      .select()
       .from(serviceRequests)
       .innerJoin(users, eq(serviceRequests.clientId, users.id))
+      .leftJoin(negotiations, eq(negotiations.requestId, serviceRequests.id))
+      .leftJoin(reviews, eq(reviews.requestId, serviceRequests.id))
       .where(eq(serviceRequests.providerId, providerId))
-      .orderBy(desc(serviceRequests.createdAt));
+      .orderBy(desc(serviceRequests.createdAt), desc(negotiations.createdAt));
 
-    console.log(`[Storage] Found ${result.length} requests for provider`);
+      const requestsMap = new Map<string, any>();
 
-    const requests = result.map(row => ({
-      ...row.request,
-      client: row.client,
-    }));
-
-    // Fetch negotiations for each request
-    const requestsWithNegotiations = [];
-    for (const request of requests) {
-      console.log(`[Storage] Fetching negotiations for request: ${request.id}`);
+      for (const row of rows) {
+        const { service_requests: request, users: client, negotiations: negotiation, reviews: review } = row;
+        if (!requestsMap.has(request.id)) {
+          requestsMap.set(request.id, {
+            ...request,
+            client,
+            negotiations: [],
+            reviews: [],
+          });
+        }
+  
+        const existingRequest = requestsMap.get(request.id)!;
+  
+        if (negotiation && !existingRequest.negotiations.some((n: any) => n.id === negotiation.id)) {
+          existingRequest.negotiations.push(negotiation);
+        }
+        
+        if (review && !existingRequest.reviews.some((r: any) => r.id === review.id)) {
+          existingRequest.reviews.push(review);
+        }
+      }
       
-      const negotiationResults = await db
-        .select({
-          negotiation: negotiations,
-          proposer: users,
-        })
-        .from(negotiations)
-        .innerJoin(users, eq(negotiations.proposerId, users.id))
-        .where(eq(negotiations.requestId, request.id))
-        .orderBy(desc(negotiations.createdAt));
-
-      console.log(`[Storage] Found ${negotiationResults.length} negotiations for request ${request.id}`);
-
-      const requestWithNegotiations = {
-        ...request,
-        negotiations: negotiationResults.map(row => ({
-          ...row.negotiation,
-          proposer: row.proposer,
-        })),
-      };
-
-      requestsWithNegotiations.push(requestWithNegotiations);
-    }
-
-    console.log(`[Storage] Returning ${requestsWithNegotiations.length} requests with negotiations`);
-    return requestsWithNegotiations;
+    const finalRequests = Array.from(requestsMap.values());
+      
+      // Fetch proposers for negotiations
+      for (const request of finalRequests) {
+          if (request.negotiations.length > 0) {
+              const proposerIds = request.negotiations.map((n: Negotiation) => n.proposerId);
+              // fetch proposers from users table where id is in proposerIds
+              const proposers = await db.select().from(users).where(or(...proposerIds.map((id: string) => eq(users.id, id))));
+              const proposersMap = new Map(proposers.map(p => [p.id, p]));
+              request.negotiations = request.negotiations.map((n: Negotiation) => ({
+                  ...n,
+                  proposer: proposersMap.get(n.proposerId),
+              }));
+          }
+      }
+  
+      return finalRequests;
   }
 
   async createServiceRequest(request: InsertServiceRequest): Promise<ServiceRequest> {
@@ -444,12 +446,25 @@ export class DatabaseStorage implements IStorage {
       .where(eq(serviceRequests.id, requestId));
   }
 
-  async getReviewsByProvider(providerId: string): Promise<Review[]> {
-    return db
+  async getReviewsByProvider(providerId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]> {
+    const results = await db
       .select()
       .from(reviews)
-      .where(eq(reviews.revieweeId, providerId))
+      .innerJoin(users, eq(reviews.reviewerId, users.id))
+      .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
+      .innerJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
+      .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
+      .where(eq(reviews.revieweeId, providerId)) // Correctly filter by the person being reviewed
       .orderBy(desc(reviews.createdAt));
+
+    return results.map(r => ({
+      ...r.reviews,
+      reviewer: r.users,
+      serviceRequest: {
+        ...r.service_requests,
+        category: r.service_categories,
+      }
+    }));
   }
 
   async createReview(review: InsertReview): Promise<Review> {
@@ -458,15 +473,6 @@ export class DatabaseStorage implements IStorage {
       .values(review)
       .returning();
     return newReview;
-  }
-
-  async getReviewByRequest(requestId: string): Promise<Review | undefined> {
-    const [review] = await db
-      .select()
-      .from(reviews)
-      .where(eq(reviews.requestId, requestId))
-      .limit(1);
-    return review || undefined;
   }
 
   async getMessagesByRequest(requestId: string): Promise<Message[]> {
