@@ -127,14 +127,20 @@ export default function ProviderProfile() {
   });
 
   const { data: reviews = [] } = useQuery<ReviewWithUser[]>({
-    queryKey: ["/api/providers", provider?.userId, "reviews"],
+    queryKey: ["/api/reviews/provider", providerId],
     queryFn: async () => {
-      const response = await fetch(`/api/providers/${provider!.userId}/reviews`);
+      const response = await fetch(`/api/reviews/provider/${providerId}`);
       if (!response.ok) return [];
       return response.json();
     },
-    enabled: !!provider?.userId,
+    enabled: !!providerId,
   });
+
+  // Mostrar apenas avaliações sobre este prestador (reviewee === provider.userId)
+  // e realizadas por clientes (reviewer !== provider.userId)
+  const filteredReviews = Array.isArray(reviews)
+    ? reviews.filter((r) => r.revieweeId === provider?.userId && r.reviewerId !== provider?.userId)
+    : [];
 
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/categories"],
@@ -371,7 +377,7 @@ export default function ProviderProfile() {
                         {provider.averageRating > 0 ? provider.averageRating.toFixed(1) : "N/A"}
                       </span>
                       <span className="text-gray-600 ml-1">
-                        ({provider.reviewCount} avaliações)
+                        ({filteredReviews.length} avaliações)
                       </span>
                     </div>
                   </div>
@@ -414,14 +420,14 @@ export default function ProviderProfile() {
               </CardContent>
             </Card>
 
-            {/* Reviews Section */}
-            {reviews.length > 0 && (
+            {/* Reviews Section (somente avaliações de clientes sobre este prestador) */}
+            {filteredReviews.length > 0 && (
               <Card className="mt-8">
                 <CardHeader>
-                  <CardTitle>Avaliações Recentes</CardTitle>
+                  <CardTitle>Avaliações</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {reviews.map((review) => (
+                  {filteredReviews.map((review) => (
                     <div key={review.id} className="border-t pt-4 first:border-t-0 first:pt-0">
                       <div className="flex items-start space-x-4">
                         <div className="flex-shrink-0 w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">

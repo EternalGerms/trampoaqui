@@ -19,10 +19,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { 
   User, 
   Star, 
-  Calendar, 
-  MessageCircle, 
-  Settings, 
-  BarChart3, 
+  MessageCircle,
+  
+  
+  
   Clock,
   
   CheckCircle,
@@ -189,15 +189,7 @@ type ClientRequest = ServiceRequest & {
   }>;
 };
 
-type MessageWithSender = {
-  id: string;
-  senderId: string;
-  receiverId: string;
-  content: string;
-  isRead: boolean;
-  createdAt: string;
-  sender: { id: string; name: string; email: string };
-};
+ 
 
 export default function ProviderDashboard() {
   const [, setLocation] = useLocation();
@@ -213,15 +205,23 @@ export default function ProviderDashboard() {
 
   const user = authManager.getUser();
 
-  const { data: allProviders = [] } = useQuery<ProviderWithDetails[]>({
-    queryKey: ["/api/providers"],
+  const { data: userProviders = [], isLoading: isLoadingProviders } = useQuery<any[]>({
+    queryKey: ["/api/users/me/providers"],
+    queryFn: async () => {
+      const response = await authenticatedRequest('GET', '/api/users/me/providers');
+      return response.json();
+    },
+    enabled: !!user,
   });
-
-  const userProviders = Array.isArray(allProviders) ? allProviders.filter(p => p.userId === user?.id) : [];
-  const provider = userProviders[0]; // For backward compatibility
+  
+  const provider = userProviders[0];
 
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/categories"],
+    queryFn: async () => {
+      const response = await authenticatedRequest('GET', '/api/categories');
+      return response.json();
+    },
   });
 
   const { data: requests = [], isLoading: requestsLoading } = useQuery<RequestWithClient[]>({
@@ -290,9 +290,7 @@ export default function ProviderDashboard() {
     }
   }, [requests, requestsLoading, clientRequests, clientRequestsLoading, user, provider]);
 
-  const { data: messages = [], isLoading: messagesLoading } = useQuery<MessageWithSender[]>({
-    queryKey: ["/api/messages/received"],
-  });
+  
 
   const form = useForm<UpdateProviderForm>({
     resolver: zodResolver(updateProviderSchema),
@@ -890,1151 +888,1064 @@ export default function ProviderDashboard() {
                     </TabsList>
 
                     <TabsContent value="overview">
-            <div className="grid lg:grid-cols-3 gap-6">
-              {/* Profile Overview */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <User className="w-5 h-5" />
-                    Meu Perfil
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {provider ? (
-                    <>
-                      <div className="flex items-center mb-4">
-                        <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mr-4">
-                          <i className={`${provider.category?.icon || 'fas fa-user'} text-primary-600 text-xl`}></i>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900">{provider.user?.name}</p>
-                          <p className="text-primary-600 text-sm">{provider.category?.name}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Avaliação:</span>
-                          <div className="flex items-center">
-                            <Star className="w-4 h-4 text-yellow-400 fill-current mr-1" />
-                            <span className="font-medium">
-                              {provider.averageRating > 0 ? provider.averageRating.toFixed(1) : "N/A"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Serviços realizados:</span>
-                          <span className="font-medium">{completedServices}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Ganhos este mês:</span>
-                          <span className="font-medium text-green-600">R$ {monthlyEarnings.toFixed(2)}</span>
-                        </div>
-                      </div>
-                      
-                      {/* Botão Ver Perfil */}
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <Button 
-                          onClick={() => setLocation(`/provider-profile/${provider.id}`)}
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                        >
-                          <User className="w-4 h-4 mr-2" />
-                          Ver Perfil
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-center py-6">
-                      <User className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                      <p className="text-gray-600 mb-4">Complete seu perfil para começar</p>
-                      <Button onClick={() => setLocation('/complete-profile')} size="sm">
-                        <Edit className="w-4 h-4 mr-2" />
-                        Completar Perfil
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Multiple Services */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                      <Briefcase className="w-5 h-5" />
-                      Meus Serviços
-                    </span>
-                    {!showNewServiceForm && (
-                      <Button 
-                        size="sm" 
-                        onClick={() => setShowNewServiceForm(true)}
-                        className="bg-green-600 hover:bg-green-700"
-                        disabled={userProviders.length >= categories.length}
-                      >
-                        + Novo
-                      </Button>
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-
-
-                  {/* Lista de serviços existentes */}
-                  {userProviders.length > 0 ? (
-                    <div className="space-y-3">
-                      {userProviders.map((serviceProvider) => (
-                        <div 
-                          key={serviceProvider.id} 
-                          className="border rounded-lg p-3 hover:bg-gray-50 cursor-pointer transition-colors"
-                          onClick={() => setLocation(`/provider/${serviceProvider.id}`)}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-start flex-1 min-w-0">
-                              <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center mr-3 flex-shrink-0">
-                                <i className={`${serviceProvider.category?.icon || 'fas fa-briefcase'} text-primary-600`}></i>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-medium text-sm text-gray-900 mb-1">{serviceProvider.category.name}</h4>
-                                
-                                {/* Descrição truncada */}
-                                {serviceProvider.description && (
-                                  <p className="text-xs text-gray-600 mb-2 line-clamp-2 leading-relaxed">
-                                    {serviceProvider.description.length > 120 
-                                      ? `${serviceProvider.description.substring(0, 120)}...` 
-                                      : serviceProvider.description
-                                    }
-                                  </p>
-                                )}
-                                
-                                <p className="text-xs text-gray-600 mb-1">{serviceProvider.location}</p>
-                                
-                                <div className="flex items-center text-xs text-gray-500">
-                                  <Star className="w-3 h-3 mr-1 text-yellow-500" />
-                                  <span>{serviceProvider.averageRating?.toFixed(1) || "0.0"} ({serviceProvider.reviewCount})</span>
+                      <div className="grid lg:grid-cols-3 gap-6">
+                        {/* Profile Overview */}
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                              <User className="w-5 h-5" />
+                              Meu Perfil
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            {provider ? (
+                              <>
+                                <div className="flex items-center mb-4">
+                                  <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mr-4">
+                                    <i className={`${provider.category?.icon || 'fas fa-user'} text-primary-600 text-xl`}></i>
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold text-gray-900">{provider.user?.name}</p>
+                                    <p className="text-primary-600 text-sm">{provider.category?.name}</p>
+                                  </div>
                                 </div>
-                              </div>
-                            </div>
-                            
-                            {/* Botão de ação */}
-                            <div className="ml-3 flex-shrink-0">
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setLocation(`/provider/${serviceProvider.id}`);
-                                }}
-                                className="text-xs"
-                              >
-                                Ver
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-4">
-                      <Briefcase className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600 mb-3">Nenhum serviço cadastrado</p>
-                      {!showNewServiceForm && (
-                        <Button 
-                          size="sm" 
-                          onClick={() => setShowNewServiceForm(true)}
-                        >
-                          Criar Serviço
-                        </Button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Mensagem quando todas as categorias estão ocupadas */}
-                  {userProviders.length >= categories.length && userProviders.length > 0 && (
-                    <div className="text-center py-4 text-sm text-gray-500">
-                      Você já possui serviços em todas as categorias disponíveis.
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Recent Requests */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <MessageCircle className="w-5 h-5" />
-                    Solicitações Recentes
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {requestsLoading ? (
-                    <div className="space-y-3">
-                      {[...Array(3)].map((_, i) => (
-                        <div key={i} className="animate-pulse">
-                          <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                          <div className="h-3 bg-gray-200 rounded"></div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : Array.isArray(requests) && requests.length > 0 ? (
-                    <div className="space-y-3">
-                      {requests.slice(0, 3).map((request) => (
-                        <div key={request.id} className="border border-gray-200 rounded-lg p-3">
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <p className="font-medium text-gray-900 text-sm">{request.client.name}</p>
-                              <p className="text-gray-600 text-xs">{request.title}</p>
-                            </div>
-                            {getStatusBadge(getEffectiveRequestStatus(request))}
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs text-gray-500">
-                              {new Date(request.createdAt).toLocaleDateString('pt-BR')}
-                            </span>
-                            {request.status === 'pending' && (
-                              <div className="flex gap-1">
-                                <Button 
-                                  size="sm" 
-                                  variant="outline"
-                                  onClick={() => handleUpdateRequestStatus(request.id, 'accepted')}
-                                  className="text-xs px-2 py-1 h-auto"
-                                >
-                                  Aceitar
-                                </Button>
-                                <Button 
-                                  size="sm" 
-                                  variant="outline"
-                                  onClick={() => handleUpdateRequestStatus(request.id, 'cancelled')}
-                                  className="text-xs px-2 py-1 h-auto text-red-600 hover:text-red-700"
-                                >
-                                  Recusar
+                                <div className="space-y-2">
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-gray-600">Avaliação:</span>
+                                    <div className="flex items-center">
+                                      <Star className="w-4 h-4 text-yellow-400 fill-current mr-1" />
+                                      <span className="font-medium">
+                                        {provider.averageRating > 0 ? provider.averageRating.toFixed(1) : "N/A"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-gray-600">Serviços realizados:</span>
+                                    <span className="font-medium">{completedServices}</span>
+                                  </div>
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-gray-600">Ganhos este mês:</span>
+                                    <span className="font-medium text-green-600">R$ {monthlyEarnings.toFixed(2)}</span>
+                                  </div>
+                                </div>
+                                
+                                {/* Botão Ver Perfil */}
+                                <div className="mt-4 pt-4 border-t border-gray-200">
+                                  <Button 
+                                    onClick={() => setLocation(`/provider-profile/${provider.id}`)}
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full"
+                                  >
+                                    <User className="w-4 h-4 mr-2" />
+                                    Ver Perfil
+                                  </Button>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-center py-6">
+                                <User className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                                <p className="text-gray-600 mb-4">Complete seu perfil para começar</p>
+                                <Button onClick={() => setLocation('/complete-profile')} size="sm">
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  Completar Perfil
                                 </Button>
                               </div>
                             )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-sm">Nenhuma solicitação ainda</p>
-                  )}
-                </CardContent>
-              </Card>
+                          </CardContent>
+                        </Card>
 
-              {/* Messages */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <MessageCircle className="w-5 h-5" />
-                    Mensagens Recebidas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {messagesLoading ? (
-                    <div className="space-y-3">
-                      {[...Array(3)].map((_, i) => (
-                        <div key={i} className="animate-pulse">
-                          <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                          <div className="h-3 bg-gray-200 rounded"></div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : messages.length > 0 ? (
-                    <div className="space-y-3">
-                      {messages.slice(0, 5).map((message) => (
-                        <div key={message.id} className="border-b border-gray-100 pb-3 last:border-b-0">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <p className="font-medium text-sm text-gray-900">{message.sender.name}</p>
-                              <p className="text-sm text-gray-600 mt-1 line-clamp-2">{message.content}</p>
-                              <p className="text-xs text-gray-500 mt-2">
-                                {new Date(message.createdAt).toLocaleDateString('pt-BR')}
-                              </p>
-                            </div>
-                            {!message.isRead && (
-                              <div className="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-sm">Nenhuma mensagem ainda</p>
-                  )}
-                </CardContent>
-              </Card>
+                        {/* Multiple Services */}
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="flex items-center justify-between">
+                              <span className="flex items-center gap-2">
+                                <Briefcase className="w-5 h-5" />
+                                Meus Serviços
+                              </span>
+                              {!showNewServiceForm && (
+                                <Button 
+                                  size="sm" 
+                                  onClick={() => setShowNewServiceForm(true)}
+                                  className="bg-green-600 hover:bg-green-700"
+                                  disabled={userProviders.length >= categories.length}
+                                >
+                                  + Novo
+                                </Button>
+                              )}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
 
-              {/* Quick Actions */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Settings className="w-5 h-5" />
-                    Ações Rápidas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <Button 
-                      variant="outline" 
-                      className="w-full justify-start"
-                      onClick={() => setEditingProfile(true)}
-                    >
-                      <Edit className="w-4 h-4 mr-3" />
-                      <div className="text-left">
-                        <p className="font-medium text-sm">Editar Perfil</p>
-                        <p className="text-xs text-gray-600">Atualizar informações e preços</p>
-                      </div>
-                    </Button>
 
-                    <Button 
-                      variant="outline" 
-                      className="w-full justify-start"
-                      onClick={() => setLocation('/services')}
-                    >
-                      <Calendar className="w-4 h-4 mr-3" />
-                      <div className="text-left">
-                        <p className="font-medium text-sm">Ver Perfil Público</p>
-                        <p className="text-xs text-gray-600">Como os clientes veem você</p>
-                      </div>
-                    </Button>
-
-                    <Button 
-                      variant="outline" 
-                      className="w-full justify-start"
-                    >
-                      <BarChart3 className="w-4 h-4 mr-3" />
-                      <div className="text-left">
-                        <p className="font-medium text-sm">Relatórios</p>
-                        <p className="text-xs text-gray-600">Ver ganhos e estatísticas</p>
-                      </div>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="requests">
-            <Card>
-              <CardHeader>
-                <CardTitle>Todas as Solicitações</CardTitle>
-                <CardDescription>
-                  Gerencie suas solicitações de serviço
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {requestsLoading ? (
-                  <div className="space-y-4">
-                    {[...Array(5)].map((_, i) => (
-                      <div key={i} className="animate-pulse border rounded-lg p-4">
-                        <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                        <div className="h-3 bg-gray-200 rounded"></div>
-                      </div>
-                    ))}
-                  </div>
-                                  ) : Array.isArray(requests) && requests.length > 0 ? (
-                  <div className="space-y-4">
-                    {requests.map((request) => {
-                      // Validação adicional para garantir que esta é uma solicitação para o prestador atual
-                      if (request.providerId !== provider?.id) {
-                        console.warn(`Request ${request.id} has providerId ${request.providerId}, but current provider is ${provider?.id}`);
-                        return null;
-                      }
-                      
-                      return (
-                        <div key={request.id} className="border border-gray-200 rounded-lg p-4">
-                          <div className="flex justify-between items-start mb-3">
-                            <div>
-                              <h4 className="font-semibold text-gray-900">{request.title}</h4>
-                              <p className="text-gray-600 text-sm">Cliente: {request.client.name}</p>
-                            </div>
-                            {getStatusBadge(getEffectiveRequestStatus(request))}
-                          </div>
-                          
-                          <p className="text-gray-700 mb-3">{request.description}</p>
-                          
-                          {/* Enhanced request details */}
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 p-3 bg-gray-50 rounded-lg">
-                            <div>
-                              <p className="text-xs text-gray-500 font-medium">Tipo de Orçamento</p>
-                              <p className="text-sm font-medium text-gray-900 capitalize">
-                                {request.pricingType === 'hourly' ? 'Por Hora' : 
-                                 request.pricingType === 'daily' ? 'Por Dia' : 'Valor Fixo'}
-                              </p>
-                            </div>
-                            
-                            {request.proposedPrice && (
-                              <div>
-                                <p className="text-xs text-gray-500 font-medium">Orçamento</p>
-                                <p className="text-sm font-medium text-green-600">R$ {request.proposedPrice}</p>
-                              </div>
-                            )}
-                            
-                            {request.proposedHours && (
-                              <div>
-                                <p className="text-xs text-gray-500 font-medium">Tempo Estimado</p>
-                                <p className="text-sm font-medium text-gray-900">{request.proposedHours}h</p>
-                              </div>
-                            )}
-                            
-                            {request.proposedDays && (
-                              <div>
-                                <p className="text-xs text-gray-500 font-medium">Dias Estimados</p>
-                                <p className="text-sm font-medium text-gray-900">{request.proposedDays} dias</p>
-                              </div>
-                            )}
-                            
-                            {request.scheduledDate && (
-                              <div className="md:col-span-2">
-                                <p className="text-xs text-gray-500 font-medium">Data e Horário Agendado</p>
-                                <p className="text-sm font-medium text-blue-600">
-                                  {formatDateTime(request.scheduledDate)}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                          
-                          <div className="flex justify-between items-center text-sm text-gray-600 mb-3">
-                            <span>Solicitado em: {new Date(request.createdAt).toLocaleDateString('pt-BR')}</span>
-                          </div>
-                          
-                          {/* Show negotiations if they exist */}
-                          {request.negotiations && request.negotiations.length > 0 && (
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                              <h4 className="font-medium text-blue-900 mb-2 flex items-center gap-2">
-                                <Clock className="w-4 h-4" />
-                                Negociações ({request.negotiations.length})
-                              </h4>
-                              <div className="space-y-2">
-                                {request.negotiations.map((negotiation) => (
-                                  <div key={negotiation.id} className="bg-white border border-blue-200 rounded p-3">
-                                    <div className="flex justify-between items-start mb-2">
-                                      <div className="flex-1">
-                                        <p className="text-sm text-gray-700 mb-1">
-                                          <strong>Proposta de {negotiation.proposer.name}:</strong>
-                                        </p>
-                                        <p className="text-sm text-gray-600 mb-2">{negotiation.message}</p>
-                                        <div className="flex items-center gap-4 text-sm">
-                                          {negotiation.proposedPrice && (
-                                            <span className="flex items-center gap-1 text-green-600 font-medium">
-                                              <DollarSign className="w-3 h-3" />
-                                              R$ {parseFloat(negotiation.proposedPrice).toFixed(2).replace('.', ',')}
-                                            </span>
+                            {/* Lista de serviços existentes */}
+                            {userProviders.length > 0 ? (
+                              <div className="space-y-3">
+                                {userProviders.map((serviceProvider) => (
+                                  <div 
+                                    key={serviceProvider.id} 
+                                    className="border rounded-lg p-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                                    onClick={() => setLocation(`/provider/${serviceProvider.id}`)}
+                                  >
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex items-start flex-1 min-w-0">
+                                        <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center mr-3 flex-shrink-0">
+                                          <i className={`${serviceProvider.category?.icon || 'fas fa-briefcase'} text-primary-600`}></i>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <h4 className="font-medium text-sm text-gray-900 mb-1">{serviceProvider.category.name}</h4>
+                                          
+                                          {/* Descrição truncada */}
+                                          {serviceProvider.description && (
+                                            <p className="text-xs text-gray-600 mb-2 line-clamp-2 leading-relaxed">
+                                              {serviceProvider.description.length > 120 
+                                                ? `${serviceProvider.description.substring(0, 120)}...` 
+                                                : serviceProvider.description
+                                              }
+                                            </p>
                                           )}
-                                          {negotiation.proposedHours && (
-                                            <span className="text-gray-600">
-                                              {negotiation.proposedHours} horas
-                                            </span>
-                                          )}
-                                          {negotiation.proposedDays && (
-                                            <span className="text-gray-600">
-                                              {negotiation.proposedDays} dias
-                                            </span>
-                                          )}
-                                          {negotiation.proposedDate && (
-                                            <span className="text-gray-600">
-                                              {new Date(negotiation.proposedDate).toLocaleDateString('pt-BR')}
-                                            </span>
-                                          )}
+                                          
+                                          <p className="text-xs text-gray-600 mb-1">{serviceProvider.location}</p>
+                                          
+                                          <div className="flex items-center text-xs text-gray-500">
+                                            <Star className="w-3 h-3 mr-1 text-yellow-500" />
+                                            <span>{serviceProvider.averageRating?.toFixed(1) || "0.0"} ({serviceProvider.reviewCount})</span>
+                                          </div>
                                         </div>
                                       </div>
-                                      {canNegotiationHaveActions(request, negotiation) && (
-                                        <div className="flex gap-2 ml-4">
-                                          <Button
-                                            size="sm"
-                                            onClick={() => updateNegotiationStatusMutation.mutate({ 
-                                              negotiationId: negotiation.id, 
-                                              status: 'accepted' 
-                                            })}
-                                            className="bg-green-600 hover:bg-green-700 text-white"
-                                            disabled={updateNegotiationStatusMutation.isPending}
-                                          >
-                                            <Check className="w-3 h-3 mr-1" />
-                                            Aceitar
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => updateNegotiationStatusMutation.mutate({ 
-                                              negotiationId: negotiation.id, 
-                                              status: 'rejected' 
-                                            })}
-                                            className="border-red-300 text-red-600 hover:bg-red-50"
-                                            disabled={updateNegotiationStatusMutation.isPending}
-                                          >
-                                            <X className="w-3 h-3 mr-1" />
-                                            Recusar
-                                          </Button>
-                                          <Dialog>
-                                            <DialogTrigger asChild>
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => {
-                                                  setCounterProposalRequestId(request.id);
-                                                  setOriginalRequestData(negotiation);
-                                                  // Pre-fill form with current negotiation data
-                                                  counterProposalForm.reset({
-                                                    pricingType: negotiation.pricingType as 'hourly' | 'daily' | 'fixed',
-                                                    proposedPrice: negotiation.proposedPrice || "",
-                                                    proposedHours: negotiation.proposedHours?.toString() || "",
-                                                    proposedDays: negotiation.proposedDays?.toString() || "",
-                                                    proposedDate: negotiation.proposedDate ? 
-                                                      new Date(negotiation.proposedDate).toISOString().split('T')[0] : "",
-                                                    proposedTime: negotiation.proposedDate ? 
-                                                      new Date(negotiation.proposedDate).toTimeString().slice(0, 5) : "",
-                                                    message: "",
-                                                  });
-                                                }}
-                                                className="border-blue-300 text-blue-600 hover:bg-blue-50"
-                                              >
-                                                <MessageCircle className="w-3 h-3 mr-1" />
-                                                Contraproposta
-                                              </Button>
-                                            </DialogTrigger>
-                                            <DialogContent className="sm:max-w-md">
-                                              <DialogHeader>
-                                                <DialogTitle>Fazer Contraproposta</DialogTitle>
-                                                <DialogDescription>
-                                                  Envie uma contraproposta para o cliente com seus termos.
-                                                </DialogDescription>
-                                              </DialogHeader>
-                                              <Form {...counterProposalForm}>
-                                                <form onSubmit={counterProposalForm.handleSubmit(handleCounterProposal)} className="space-y-4">
-                                                  <FormField
-                                                    control={counterProposalForm.control}
-                                                    name="pricingType"
-                                                    render={({ field }) => (
-                                                      <FormItem>
-                                                        <FormLabel>Tipo de Cobrança</FormLabel>
-                                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                          <FormControl>
-                                                            <SelectTrigger>
-                                                              <SelectValue />
-                                                            </SelectTrigger>
-                                                          </FormControl>
-                                                          <SelectContent>
-                                                            {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('hourly') && (
-                                                              <SelectItem value="hourly">Por Hora</SelectItem>
-                                                            )}
-                                                            {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('daily') && (
-                                                              <SelectItem value="daily">Por Dia</SelectItem>
-                                                            )}
-                                                            {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('fixed') && (
-                                                              <SelectItem value="fixed">Valor Fixo</SelectItem>
-                                                            )}
-                                                          </SelectContent>
-                                                        </Select>
-                                                        <FormMessage />
-                                                      </FormItem>
-                                                    )}
-                                                  />
-
-                                                  {counterProposalForm.watch('pricingType') === 'hourly' && (
-                                                    <FormField
-                                                      control={counterProposalForm.control}
-                                                      name="proposedHours"
-                                                      render={({ field }) => (
-                                                        <FormItem>
-                                                          <FormLabel>Horas Estimadas</FormLabel>
-                                                          <FormControl>
-                                                            <Input type="number" placeholder="Ex: 8" {...field} />
-                                                          </FormControl>
-                                                          <FormMessage />
-                                                        </FormItem>
-                                                      )}
-                                                    />
-                                                  )}
-
-                                                  {counterProposalForm.watch('pricingType') === 'daily' && (
-                                                    <FormField
-                                                      control={counterProposalForm.control}
-                                                      name="proposedDays"
-                                                      render={({ field }) => (
-                                                        <FormItem>
-                                                          <FormLabel>Dias Estimados</FormLabel>
-                                                          <FormControl>
-                                                            <Input type="number" placeholder="Ex: 2" {...field} />
-                                                          </FormControl>
-                                                          <FormMessage />
-                                                        </FormItem>
-                                                      )}
-                                                    />
-                                                  )}
-
-                                                  <FormField
-                                                    control={counterProposalForm.control}
-                                                    name="proposedPrice"
-                                                    render={({ field }) => (
-                                                      <FormItem>
-                                                        <FormLabel>Valor Proposto (R$)</FormLabel>
-                                                        <FormControl>
-                                                          <Input type="number" step="0.01" placeholder="Ex: 150.00" {...field} />
-                                                        </FormControl>
-                                                        <FormMessage />
-                                                      </FormItem>
-                                                    )}
-                                                  />
-
-                                                  <FormField
-                                                    control={counterProposalForm.control}
-                                                    name="proposedDate"
-                                                    render={({ field }) => (
-                                                      <FormItem>
-                                                        <FormLabel>Data Proposta</FormLabel>
-                                                        <FormControl>
-                                                          <Input type="date" {...field} />
-                                                        </FormControl>
-                                                        <FormMessage />
-                                                      </FormItem>
-                                                    )}
-                                                  />
-
-                                                  <FormField
-                                                    control={counterProposalForm.control}
-                                                    name="proposedTime"
-                                                    render={({ field }) => (
-                                                      <FormItem>
-                                                        <FormLabel>Horário Proposto</FormLabel>
-                                                        <FormControl>
-                                                          <Input type="time" {...field} />
-                                                        </FormControl>
-                                                        <FormMessage />
-                                                      </FormItem>
-                                                    )}
-                                                  />
-
-                                                  <FormField
-                                                    control={counterProposalForm.control}
-                                                    name="message"
-                                                    render={({ field }) => (
-                                                      <FormItem>
-                                                        <FormLabel>Mensagem</FormLabel>
-                                                        <FormControl>
-                                                          <Textarea 
-                                                            placeholder="Explique sua proposta..."
-                                                            rows={3}
-                                                            {...field} 
-                                                          />
-                                                        </FormControl>
-                                                        <FormMessage />
-                                                      </FormItem>
-                                                    )}
-                                                  />
-
-                                                  <div className="flex gap-2">
-                                                    <Button 
-                                                      type="submit" 
-                                                      disabled={createNegotiationMutation.isPending}
-                                                      className="bg-blue-600 hover:bg-blue-700"
-                                                    >
-                                                      {createNegotiationMutation.isPending ? "Enviando..." : "Enviar Proposta"}
-                                                    </Button>
-                                                  </div>
-                                                </form>
-                                              </Form>
-                                            </DialogContent>
-                                          </Dialog>
-                                        </div>
-                                      )}
-
-                                      {/* Show effective status for all negotiations */}
-                                      {(() => {
-                                        const effectiveStatus = getEffectiveNegotiationStatus(request, negotiation);
-                                        
-                                        if (effectiveStatus === 'pending') {
-                                          if (negotiation.proposer.id === user?.id) {
-                                            // User's own pending proposal
-                                            return (
-                                              <div className="ml-4">
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                                  <Clock className="w-3 h-3 mr-1" />
-                                                  Aguardando resposta
-                                                </span>
-                                              </div>
-                                            );
-                                          } else {
-                                            // Client's pending proposal (can have actions)
-                                            return null; // Will show action buttons
-                                          }
-                                        } else if (effectiveStatus === 'rejected') {
-                                          // Show rejected badge for proposals that were superseded
-                                          return (
-                                            <Badge className="bg-red-100 text-red-800">
-                                              Recusado
-                                            </Badge>
-                                          );
-                                        } else if (effectiveStatus === 'accepted') {
-                                          return (
-                                            <Badge className="bg-green-100 text-green-800">
-                                              Aceito
-                                            </Badge>
-                                          );
-                                        }
-                                        
-                                        return null;
-                                      })()}
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                      {new Date(negotiation.createdAt).toLocaleDateString('pt-BR')} às {new Date(negotiation.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                      
+                                      {/* Botão de ação */}
+                                      <div className="ml-3 flex-shrink-0">
+                                        <Button 
+                                          size="sm" 
+                                          variant="outline"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setLocation(`/provider/${serviceProvider.id}`);
+                                          }}
+                                          className="text-xs"
+                                        >
+                                          Ver
+                                        </Button>
+                                      </div>
                                     </div>
                                   </div>
                                 ))}
                               </div>
-                            </div>
-                          )}
-                          
-                          {request.status === 'pending' && (
-                            <div className="flex gap-2">
-                              <Button 
-                                size="sm"
-                                onClick={() => handleUpdateRequestStatus(request.id, 'accepted')}
-                                className="bg-green-600 hover:bg-green-700"
-                              >
-                                Aceitar
-                              </Button>
-                              <Dialog>
-                                <DialogTrigger asChild>
+                            ) : (
+                              <div className="text-center py-4">
+                                <Briefcase className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                <p className="text-sm text-gray-600 mb-3">Nenhum serviço cadastrado</p>
+                                {!showNewServiceForm && (
                                   <Button 
                                     size="sm" 
-                                    variant="outline"
-                                    onClick={() => {
-                                      setCounterProposalRequestId(request.id);
-                                      setOriginalRequestData(request); // Store original request data
-                                      // Pre-fill form with current request data
-                                      counterProposalForm.reset({
-                                        pricingType: request.pricingType as 'hourly' | 'daily' | 'fixed',
-                                        proposedPrice: request.proposedPrice || "",
-                                        proposedHours: request.proposedHours?.toString() || "",
-                                        proposedDays: request.proposedDays?.toString() || "",
-                                        proposedDate: request.scheduledDate ? 
-                                          new Date(request.scheduledDate).toISOString().split('T')[0] : "",
-                                        proposedTime: request.scheduledDate ? 
-                                          new Date(request.scheduledDate).toTimeString().slice(0, 5) : "",
-                                        message: "",
-                                      });
-                                    }}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                    onClick={() => setShowNewServiceForm(true)}
                                   >
-                                    Contraproposta
+                                    Criar Serviço
                                   </Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-md">
-                                  <DialogHeader>
-                                    <DialogTitle>Fazer Contraproposta</DialogTitle>
-                                    <DialogDescription>
-                                      Envie uma contraproposta para o cliente com seus termos.
-                                    </DialogDescription>
-                                  </DialogHeader>
-                                  <Form {...counterProposalForm}>
-                                    <form onSubmit={counterProposalForm.handleSubmit(handleCounterProposal)} className="space-y-4">
-                                      <FormField
-                                        control={counterProposalForm.control}
-                                        name="pricingType"
-                                        render={({ field }) => (
-                                          <FormItem>
-                                            <FormLabel>Tipo de Cobrança</FormLabel>
-                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                              <FormControl>
-                                                <SelectTrigger>
-                                                  <SelectValue />
-                                                </SelectTrigger>
-                                              </FormControl>
-                                              <SelectContent>
-                                                {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('hourly') && (
-                                                  <SelectItem value="hourly">Por Hora</SelectItem>
-                                                )}
-                                                {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('daily') && (
-                                                  <SelectItem value="daily">Por Dia</SelectItem>
-                                                )}
-                                                {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('fixed') && (
-                                                  <SelectItem value="fixed">Valor Fixo</SelectItem>
-                                                )}
-                                              </SelectContent>
-                                            </Select>
-                                            <FormMessage />
-                                          </FormItem>
-                                        )}
-                                      />
+                                )}
+                              </div>
+                            )}
 
-                                      {counterProposalForm.watch('pricingType') === 'hourly' && (
-                                        <FormField
-                                          control={counterProposalForm.control}
-                                          name="proposedHours"
-                                          render={({ field }) => (
-                                            <FormItem>
-                                              <FormLabel>Horas Estimadas</FormLabel>
-                                              <FormControl>
-                                                <Input type="number" placeholder="Ex: 8" {...field} />
-                                              </FormControl>
-                                              <FormMessage />
-                                            </FormItem>
-                                          )}
-                                        />
+                            {/* Mensagem quando todas as categorias estão ocupadas */}
+                            {userProviders.length >= categories.length && userProviders.length > 0 && (
+                              <div className="text-center py-4 text-sm text-gray-500">
+                                Você já possui serviços em todas as categorias disponíveis.
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+
+                        {/* Recent Requests */}
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                              <MessageCircle className="w-5 h-5" />
+                              Solicitações Recentes
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            {requestsLoading ? (
+                              <div className="space-y-3">
+                                {[...Array(3)].map((_, i) => (
+                                  <div key={i} className="animate-pulse">
+                                    <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                                    <div className="h-3 bg-gray-200 rounded"></div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : Array.isArray(requests) && requests.length > 0 ? (
+                              <div className="space-y-3">
+                                {requests.slice(0, 3).map((request) => (
+                                  <div key={request.id} className="border border-gray-200 rounded-lg p-3">
+                                    <div className="flex justify-between items-start mb-2">
+                                      <div>
+                                        <p className="font-medium text-gray-900 text-sm">{request.client.name}</p>
+                                        <p className="text-gray-600 text-xs">{request.title}</p>
+                                      </div>
+                                      {getStatusBadge(getEffectiveRequestStatus(request))}
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-xs text-gray-500">
+                                        {new Date(request.createdAt).toLocaleDateString('pt-BR')}
+                                      </span>
+                                      {request.status === 'pending' && (
+                                        <div className="flex gap-1">
+                                          <Button 
+                                            size="sm" 
+                                            variant="outline"
+                                            onClick={() => handleUpdateRequestStatus(request.id, 'accepted')}
+                                            className="text-xs px-2 py-1 h-auto"
+                                          >
+                                            Aceitar
+                                          </Button>
+                                          <Button 
+                                            size="sm" 
+                                            variant="outline"
+                                            onClick={() => handleUpdateRequestStatus(request.id, 'cancelled')}
+                                            className="text-xs px-2 py-1 h-auto text-red-600 hover:text-red-700"
+                                          >
+                                            Recusar
+                                          </Button>
+                                        </div>
                                       )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-gray-500 text-sm">Nenhuma solicitação ainda</p>
+                            )}
+                          </CardContent>
+                        </Card>
 
-                                      {counterProposalForm.watch('pricingType') === 'daily' && (
-                                        <FormField
-                                          control={counterProposalForm.control}
-                                          name="proposedDays"
-                                          render={({ field }) => (
-                                            <FormItem>
-                                              <FormLabel>Dias Estimados</FormLabel>
-                                              <FormControl>
-                                                <Input type="number" placeholder="Ex: 2" {...field} />
-                                              </FormControl>
-                                              <FormMessage />
-                                            </FormItem>
-                                          )}
-                                        />
+                        
+
+                        
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="requests">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Todas as Solicitações</CardTitle>
+                          <CardDescription>
+                            Gerencie suas solicitações de serviço
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          {requestsLoading ? (
+                            <div className="space-y-4">
+                              {[...Array(5)].map((_, i) => (
+                                <div key={i} className="animate-pulse border rounded-lg p-4">
+                                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                                  <div className="h-3 bg-gray-200 rounded"></div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : Array.isArray(requests) && requests.length > 0 ? (
+                            <div className="space-y-4">
+                              {requests.map((request) => {
+                                // Validação adicional para garantir que esta é uma solicitação para o prestador atual
+                                if (request.providerId !== provider?.id) {
+                                  console.warn(`Request ${request.id} has providerId ${request.providerId}, but current provider is ${provider?.id}`);
+                                  return null;
+                                }
+                                
+                                return (
+                                  <div key={request.id} className="border border-gray-200 rounded-lg p-4">
+                                    <div className="flex justify-between items-start mb-3">
+                                      <div>
+                                        <h4 className="font-semibold text-gray-900">{request.title}</h4>
+                                        <p className="text-gray-600 text-sm">Cliente: {request.client.name}</p>
+                                      </div>
+                                      {getStatusBadge(getEffectiveRequestStatus(request))}
+                                    </div>
+                                    
+                                    <p className="text-gray-700 mb-3">{request.description}</p>
+                                    
+                                    {/* Enhanced request details */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 p-3 bg-gray-50 rounded-lg">
+                                      <div>
+                                        <p className="text-xs text-gray-500 font-medium">Tipo de Orçamento</p>
+                                        <p className="text-sm font-medium text-gray-900 capitalize">
+                                          {request.pricingType === 'hourly' ? 'Por Hora' : 
+                                           request.pricingType === 'daily' ? 'Por Dia' : 'Valor Fixo'}
+                                        </p>
+                                      </div>
+                                      
+                                      {request.proposedPrice && (
+                                        <div>
+                                          <p className="text-xs text-gray-500 font-medium">Orçamento</p>
+                                          <p className="text-sm font-medium text-green-600">R$ {request.proposedPrice}</p>
+                                        </div>
                                       )}
+                                      
+                                      {request.proposedHours && (
+                                        <div>
+                                          <p className="text-xs text-gray-500 font-medium">Tempo Estimado</p>
+                                          <p className="text-sm font-medium text-gray-900">{request.proposedHours}h</p>
+                                        </div>
+                                      )}
+                                      
+                                      {request.proposedDays && (
+                                        <div>
+                                          <p className="text-xs text-gray-500 font-medium">Dias Estimados</p>
+                                          <p className="text-sm font-medium text-gray-900">{request.proposedDays} dias</p>
+                                        </div>
+                                      )}
+                                      
+                                      {request.scheduledDate && (
+                                        <div className="md:col-span-2">
+                                          <p className="text-xs text-gray-500 font-medium">Data e Horário Agendado</p>
+                                          <p className="text-sm font-medium text-blue-600">
+                                            {formatDateTime(request.scheduledDate)}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+                                    
+                                    <div className="flex justify-between items-center text-sm text-gray-600 mb-3">
+                                      <span>Solicitado em: {new Date(request.createdAt).toLocaleDateString('pt-BR')}</span>
+                                    </div>
+                                    
+                                    {/* Show negotiations if they exist */}
+                                    {request.negotiations && request.negotiations.length > 0 && (
+                                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                                        <h4 className="font-medium text-blue-900 mb-2 flex items-center gap-2">
+                                          <Clock className="w-4 h-4" />
+                                          Negociações ({request.negotiations.length})
+                                        </h4>
+                                        <div className="space-y-2">
+                                          {request.negotiations.map((negotiation) => (
+                                            <div key={negotiation.id} className="bg-white border border-blue-200 rounded p-3">
+                                              <div className="flex justify-between items-start mb-2">
+                                                <div className="flex-1">
+                                                  <p className="text-sm text-gray-700 mb-1">
+                                                    <strong>Proposta de {negotiation.proposer.name}:</strong>
+                                                  </p>
+                                                  <p className="text-sm text-gray-600 mb-2">{negotiation.message}</p>
+                                                  <div className="flex items-center gap-4 text-sm">
+                                                    {negotiation.proposedPrice && (
+                                                      <span className="flex items-center gap-1 text-green-600 font-medium">
+                                                        <DollarSign className="w-3 h-3" />
+                                                        R$ {parseFloat(negotiation.proposedPrice).toFixed(2).replace('.', ',')}
+                                                      </span>
+                                                    )}
+                                                    {negotiation.proposedHours && (
+                                                      <span className="text-gray-600">
+                                                        {negotiation.proposedHours} horas
+                                                      </span>
+                                                    )}
+                                                    {negotiation.proposedDays && (
+                                                      <span className="text-gray-600">
+                                                        {negotiation.proposedDays} dias
+                                                      </span>
+                                                    )}
+                                                    {negotiation.proposedDate && (
+                                                      <span className="text-gray-600">
+                                                        {new Date(negotiation.proposedDate).toLocaleDateString('pt-BR')}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                                {canNegotiationHaveActions(request, negotiation) && (
+                                                  <div className="flex gap-2 ml-4">
+                                                    <Button
+                                                      size="sm"
+                                                      onClick={() => updateNegotiationStatusMutation.mutate({ 
+                                                        negotiationId: negotiation.id, 
+                                                        status: 'accepted' 
+                                                      })}
+                                                      className="bg-green-600 hover:bg-green-700 text-white"
+                                                      disabled={updateNegotiationStatusMutation.isPending}
+                                                    >
+                                                      <Check className="w-3 h-3 mr-1" />
+                                                      Aceitar
+                                                    </Button>
+                                                    <Button
+                                                      size="sm"
+                                                      variant="outline"
+                                                      onClick={() => updateNegotiationStatusMutation.mutate({ 
+                                                        negotiationId: negotiation.id, 
+                                                        status: 'rejected' 
+                                                      })}
+                                                      className="border-red-300 text-red-600 hover:bg-red-50"
+                                                      disabled={updateNegotiationStatusMutation.isPending}
+                                                    >
+                                                      <X className="w-3 h-3 mr-1" />
+                                                      Recusar
+                                                    </Button>
+                                                    <Dialog>
+                                                      <DialogTrigger asChild>
+                                                        <Button
+                                                          size="sm"
+                                                          variant="outline"
+                                                          onClick={() => {
+                                                            setCounterProposalRequestId(request.id);
+                                                            setOriginalRequestData(negotiation);
+                                                            // Pre-fill form with current negotiation data
+                                                            counterProposalForm.reset({
+                                                              pricingType: negotiation.pricingType as 'hourly' | 'daily' | 'fixed',
+                                                              proposedPrice: negotiation.proposedPrice || "",
+                                                              proposedHours: negotiation.proposedHours?.toString() || "",
+                                                              proposedDays: negotiation.proposedDays?.toString() || "",
+                                                              proposedDate: negotiation.proposedDate ? 
+                                                                new Date(negotiation.proposedDate).toISOString().split('T')[0] : "",
+                                                              proposedTime: negotiation.proposedDate ? 
+                                                                new Date(negotiation.proposedDate).toTimeString().slice(0, 5) : "",
+                                                              message: "",
+                                                            });
+                                                          }}
+                                                          className="border-blue-300 text-blue-600 hover:bg-blue-50"
+                                                        >
+                                                          <MessageCircle className="w-3 h-3 mr-1" />
+                                                          Contraproposta
+                                                        </Button>
+                                                      </DialogTrigger>
+                                                      <DialogContent className="sm:max-w-md">
+                                                        <DialogHeader>
+                                                          <DialogTitle>Fazer Contraproposta</DialogTitle>
+                                                          <DialogDescription>
+                                                            Envie uma contraproposta para o cliente com seus termos.
+                                                          </DialogDescription>
+                                                        </DialogHeader>
+                                                        <Form {...counterProposalForm}>
+                                                          <form onSubmit={counterProposalForm.handleSubmit(handleCounterProposal)} className="space-y-4">
+                                                            <FormField
+                                                              control={counterProposalForm.control}
+                                                              name="pricingType"
+                                                              render={({ field }) => (
+                                                                <FormItem>
+                                                                  <FormLabel>Tipo de Cobrança</FormLabel>
+                                                                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                                    <FormControl>
+                                                                      <SelectTrigger>
+                                                                        <SelectValue />
+                                                                      </SelectTrigger>
+                                                                    </FormControl>
+                                                                    <SelectContent>
+                                                                      {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('hourly') && (
+                                                                        <SelectItem value="hourly">Por Hora</SelectItem>
+                                                                      )}
+                                                                      {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('daily') && (
+                                                                        <SelectItem value="daily">Por Dia</SelectItem>
+                                                                      )}
+                                                                      {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('fixed') && (
+                                                                        <SelectItem value="fixed">Valor Fixo</SelectItem>
+                                                                      )}
+                                                                    </SelectContent>
+                                                                  </Select>
+                                                                  <FormMessage />
+                                                                </FormItem>
+                                                              )}
+                                                            />
 
-                                      <FormField
-                                        control={counterProposalForm.control}
-                                        name="proposedPrice"
-                                        render={({ field }) => (
-                                          <FormItem>
-                                            <FormLabel>Valor Proposto (R$)</FormLabel>
-                                            <FormControl>
-                                              <Input type="number" step="0.01" placeholder="Ex: 150.00" {...field} />
-                                            </FormControl>
-                                            <FormMessage />
-                                          </FormItem>
-                                        )}
-                                      />
+                                                            {counterProposalForm.watch('pricingType') === 'hourly' && (
+                                                              <FormField
+                                                                control={counterProposalForm.control}
+                                                                name="proposedHours"
+                                                                render={({ field }) => (
+                                                                  <FormItem>
+                                                                    <FormLabel>Horas Estimadas</FormLabel>
+                                                                    <FormControl>
+                                                                      <Input type="number" placeholder="Ex: 8" {...field} />
+                                                                    </FormControl>
+                                                                    <FormMessage />
+                                                                  </FormItem>
+                                                                )}
+                                                              />
+                                                            )}
 
-                                      <FormField
-                                        control={counterProposalForm.control}
-                                        name="proposedDate"
-                                        render={({ field }) => (
-                                          <FormItem>
-                                            <FormLabel>Data Proposta</FormLabel>
-                                            <FormControl>
-                                              <Input type="date" {...field} />
-                                            </FormControl>
-                                            <FormMessage />
-                                          </FormItem>
-                                        )}
-                                      />
+                                                            {counterProposalForm.watch('pricingType') === 'daily' && (
+                                                              <FormField
+                                                                control={counterProposalForm.control}
+                                                                name="proposedDays"
+                                                                render={({ field }) => (
+                                                                  <FormItem>
+                                                                    <FormLabel>Dias Estimados</FormLabel>
+                                                                    <FormControl>
+                                                                      <Input type="number" placeholder="Ex: 2" {...field} />
+                                                                    </FormControl>
+                                                                    <FormMessage />
+                                                                  </FormItem>
+                                                                )}
+                                                              />
+                                                            )}
 
-                                      <FormField
-                                        control={counterProposalForm.control}
-                                        name="proposedTime"
-                                        render={({ field }) => (
-                                          <FormItem>
-                                            <FormLabel>Horário Proposto</FormLabel>
-                                            <FormControl>
-                                              <Input type="time" {...field} />
-                                            </FormControl>
-                                            <FormMessage />
-                                          </FormItem>
-                                        )}
-                                      />
+                                                            <FormField
+                                                              control={counterProposalForm.control}
+                                                              name="proposedPrice"
+                                                              render={({ field }) => (
+                                                                <FormItem>
+                                                                  <FormLabel>Valor Proposto (R$)</FormLabel>
+                                                                  <FormControl>
+                                                                    <Input type="number" step="0.01" placeholder="Ex: 150.00" {...field} />
+                                                                  </FormControl>
+                                                                  <FormMessage />
+                                                                </FormItem>
+                                                              )}
+                                                            />
 
-                                      <FormField
-                                        control={counterProposalForm.control}
-                                        name="message"
-                                        render={({ field }) => (
-                                          <FormItem>
-                                            <FormLabel>Mensagem</FormLabel>
-                                            <FormControl>
-                                              <Textarea 
-                                                placeholder="Explique sua proposta..."
-                                                rows={3}
-                                                {...field} 
-                                              />
-                                            </FormControl>
-                                            <FormMessage />
-                                          </FormItem>
-                                        )}
-                                      />
+                                                            <FormField
+                                                              control={counterProposalForm.control}
+                                                              name="proposedDate"
+                                                              render={({ field }) => (
+                                                                <FormItem>
+                                                                  <FormLabel>Data Proposta</FormLabel>
+                                                                  <FormControl>
+                                                                    <Input type="date" {...field} />
+                                                                  </FormControl>
+                                                                  <FormMessage />
+                                                                </FormItem>
+                                                              )}
+                                                            />
 
+                                                            <FormField
+                                                              control={counterProposalForm.control}
+                                                              name="proposedTime"
+                                                              render={({ field }) => (
+                                                                <FormItem>
+                                                                  <FormLabel>Horário Proposto</FormLabel>
+                                                                  <FormControl>
+                                                                    <Input type="time" {...field} />
+                                                                  </FormControl>
+                                                                  <FormMessage />
+                                                                </FormItem>
+                                                              )}
+                                                            />
+
+                                                            <FormField
+                                                              control={counterProposalForm.control}
+                                                              name="message"
+                                                              render={({ field }) => (
+                                                                <FormItem>
+                                                                  <FormLabel>Mensagem</FormLabel>
+                                                                  <FormControl>
+                                                                    <Textarea 
+                                                                      placeholder="Explique sua proposta..."
+                                                                      rows={3}
+                                                                      {...field} 
+                                                                    />
+                                                                  </FormControl>
+                                                                  <FormMessage />
+                                                                </FormItem>
+                                                              )}
+                                                            />
+
+                                                            <div className="flex gap-2">
+                                                              <Button 
+                                                                type="submit" 
+                                                                disabled={createNegotiationMutation.isPending}
+                                                                className="bg-blue-600 hover:bg-blue-700"
+                                                              >
+                                                                {createNegotiationMutation.isPending ? "Enviando..." : "Enviar Proposta"}
+                                                              </Button>
+                                                            </div>
+                                                          </form>
+                                                        </Form>
+                                                      </DialogContent>
+                                                    </Dialog>
+                                                  </div>
+                                                )}
+
+                                                {/* Show effective status for all negotiations */}
+                                                {(() => {
+                                                  const effectiveStatus = getEffectiveNegotiationStatus(request, negotiation);
+                                                  
+                                                  if (effectiveStatus === 'pending') {
+                                                    if (negotiation.proposer.id === user?.id) {
+                                                      // User's own pending proposal
+                                                      return (
+                                                        <div className="ml-4">
+                                                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                                            <Clock className="w-3 h-3 mr-1" />
+                                                            Aguardando resposta
+                                                          </span>
+                                                        </div>
+                                                      );
+                                                    } else {
+                                                      // Client's pending proposal (can have actions)
+                                                      return null; // Will show action buttons
+                                                    }
+                                                  } else if (effectiveStatus === 'rejected') {
+                                                    // Show rejected badge for proposals that were superseded
+                                                    return (
+                                                      <Badge className="bg-red-100 text-red-800">
+                                                        Recusado
+                                                      </Badge>
+                                                    );
+                                                  } else if (effectiveStatus === 'accepted') {
+                                                    return (
+                                                      <Badge className="bg-green-100 text-green-800">
+                                                        Aceito
+                                                      </Badge>
+                                                    );
+                                                  }
+                                                  
+                                                  return null;
+                                                })()}
+                                              </div>
+                                              <div className="text-xs text-gray-500">
+                                                {new Date(negotiation.createdAt).toLocaleDateString('pt-BR')} às {new Date(negotiation.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    
+                                    {request.status === 'pending' && (
                                       <div className="flex gap-2">
                                         <Button 
-                                          type="submit" 
-                                          disabled={createNegotiationMutation.isPending}
-                                          className="bg-blue-600 hover:bg-blue-700"
+                                          size="sm"
+                                          onClick={() => handleUpdateRequestStatus(request.id, 'accepted')}
+                                          className="bg-green-600 hover:bg-green-700"
                                         >
-                                          {createNegotiationMutation.isPending ? "Enviando..." : "Enviar Proposta"}
+                                          Aceitar
+                                        </Button>
+                                        <Dialog>
+                                          <DialogTrigger asChild>
+                                            <Button 
+                                              size="sm" 
+                                              variant="outline"
+                                              onClick={() => {
+                                                setCounterProposalRequestId(request.id);
+                                                setOriginalRequestData(request); // Store original request data
+                                                // Pre-fill form with current request data
+                                                counterProposalForm.reset({
+                                                  pricingType: request.pricingType as 'hourly' | 'daily' | 'fixed',
+                                                  proposedPrice: request.proposedPrice || "",
+                                                  proposedHours: request.proposedHours?.toString() || "",
+                                                  proposedDays: request.proposedDays?.toString() || "",
+                                                  proposedDate: request.scheduledDate ? 
+                                                    new Date(request.scheduledDate).toISOString().split('T')[0] : "",
+                                                  proposedTime: request.scheduledDate ? 
+                                                    new Date(request.scheduledDate).toTimeString().slice(0, 5) : "",
+                                                  message: "",
+                                                });
+                                              }}
+                                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                                            >
+                                              Contraproposta
+                                            </Button>
+                                          </DialogTrigger>
+                                          <DialogContent className="sm:max-w-md">
+                                            <DialogHeader>
+                                              <DialogTitle>Fazer Contraproposta</DialogTitle>
+                                              <DialogDescription>
+                                                Envie uma contraproposta para o cliente com seus termos.
+                                              </DialogDescription>
+                                            </DialogHeader>
+                                            <Form {...counterProposalForm}>
+                                              <form onSubmit={counterProposalForm.handleSubmit(handleCounterProposal)} className="space-y-4">
+                                                <FormField
+                                                  control={counterProposalForm.control}
+                                                  name="pricingType"
+                                                  render={({ field }) => (
+                                                    <FormItem>
+                                                      <FormLabel>Tipo de Cobrança</FormLabel>
+                                                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                        <FormControl>
+                                                          <SelectTrigger>
+                                                            <SelectValue />
+                                                          </SelectTrigger>
+                                                        </FormControl>
+                                                        <SelectContent>
+                                                          {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('hourly') && (
+                                                            <SelectItem value="hourly">Por Hora</SelectItem>
+                                                          )}
+                                                          {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('daily') && (
+                                                            <SelectItem value="daily">Por Dia</SelectItem>
+                                                          )}
+                                                          {Array.isArray(provider?.pricingTypes) && provider.pricingTypes.includes('fixed') && (
+                                                            <SelectItem value="fixed">Valor Fixo</SelectItem>
+                                                          )}
+                                                        </SelectContent>
+                                                      </Select>
+                                                      <FormMessage />
+                                                    </FormItem>
+                                                  )}
+                                                />
+
+                                                {counterProposalForm.watch('pricingType') === 'hourly' && (
+                                                  <FormField
+                                                    control={counterProposalForm.control}
+                                                    name="proposedHours"
+                                                    render={({ field }) => (
+                                                      <FormItem>
+                                                        <FormLabel>Horas Estimadas</FormLabel>
+                                                        <FormControl>
+                                                          <Input type="number" placeholder="Ex: 8" {...field} />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                      </FormItem>
+                                                    )}
+                                                  />
+                                                )}
+
+                                                {counterProposalForm.watch('pricingType') === 'daily' && (
+                                                  <FormField
+                                                    control={counterProposalForm.control}
+                                                    name="proposedDays"
+                                                    render={({ field }) => (
+                                                      <FormItem>
+                                                        <FormLabel>Dias Estimados</FormLabel>
+                                                        <FormControl>
+                                                          <Input type="number" placeholder="Ex: 2" {...field} />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                      </FormItem>
+                                                    )}
+                                                  />
+                                                )}
+
+                                                <FormField
+                                                  control={counterProposalForm.control}
+                                                  name="proposedPrice"
+                                                  render={({ field }) => (
+                                                    <FormItem>
+                                                      <FormLabel>Valor Proposto (R$)</FormLabel>
+                                                      <FormControl>
+                                                        <Input type="number" step="0.01" placeholder="Ex: 150.00" {...field} />
+                                                      </FormControl>
+                                                      <FormMessage />
+                                                    </FormItem>
+                                                  )}
+                                                />
+
+                                                <FormField
+                                                  control={counterProposalForm.control}
+                                                  name="proposedDate"
+                                                  render={({ field }) => (
+                                                    <FormItem>
+                                                      <FormLabel>Data Proposta</FormLabel>
+                                                      <FormControl>
+                                                        <Input type="date" {...field} />
+                                                      </FormControl>
+                                                      <FormMessage />
+                                                    </FormItem>
+                                                  )}
+                                                />
+
+                                                <FormField
+                                                  control={counterProposalForm.control}
+                                                  name="proposedTime"
+                                                  render={({ field }) => (
+                                                    <FormItem>
+                                                      <FormLabel>Horário Proposto</FormLabel>
+                                                      <FormControl>
+                                                        <Input type="time" {...field} />
+                                                      </FormControl>
+                                                      <FormMessage />
+                                                    </FormItem>
+                                                  )}
+                                                />
+
+                                                <FormField
+                                                  control={counterProposalForm.control}
+                                                  name="message"
+                                                  render={({ field }) => (
+                                                    <FormItem>
+                                                      <FormLabel>Mensagem</FormLabel>
+                                                      <FormControl>
+                                                        <Textarea 
+                                                          placeholder="Explique sua proposta..."
+                                                          rows={3}
+                                                          {...field} 
+                                                        />
+                                                      </FormControl>
+                                                      <FormMessage />
+                                                    </FormItem>
+                                                  )}
+                                                />
+
+                                                <div className="flex gap-2">
+                                                  <Button 
+                                                    type="submit" 
+                                                    disabled={createNegotiationMutation.isPending}
+                                                    className="bg-blue-600 hover:bg-blue-700"
+                                                  >
+                                                    {createNegotiationMutation.isPending ? "Enviando..." : "Enviar Proposta"}
+                                                  </Button>
+                                                </div>
+                                              </form>
+                                            </Form>
+                                          </DialogContent>
+                                        </Dialog>
+                                        <Button 
+                                          size="sm" 
+                                          variant="outline"
+                                          onClick={() => handleUpdateRequestStatus(request.id, 'cancelled')}
+                                          className="text-red-600 hover:text-red-700"
+                                        >
+                                          Recusar
                                         </Button>
                                       </div>
-                                    </form>
-                                  </Form>
-                                </DialogContent>
-                              </Dialog>
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => handleUpdateRequestStatus(request.id, 'cancelled')}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                Recusar
-                              </Button>
+                                    )}
+                                    
+                                    {(request.status === 'accepted' || request.status === 'pending_completion') && !request.providerCompletedAt && (
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <Button 
+                                            size="sm"
+                                            className="bg-blue-600 hover:bg-blue-700"
+                                          >
+                                            Marcar como Concluído
+                                          </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>Confirmar Conclusão do Serviço</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                              {checkServiceDate(request) ? (
+                                                <>
+                                                  Atenção: O serviço está agendado para <strong>{request.scheduledDate ? formatDateTime(request.scheduledDate) : ''}</strong>. 
+                                                  Você está marcando como concluído antes da data/horário agendado. 
+                                                  Tem certeza que deseja continuar?
+                                                </>
+                                              ) : (
+                                                <>
+                                                  Você está prestes a marcar este serviço como concluído. 
+                                                  O cliente também precisará confirmar a conclusão para que o serviço seja finalizado.
+                                                </>
+                                              )}
+                                            </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                            <AlertDialogAction 
+                                              onClick={() => handleUpdateRequestStatus(request.id, 'completed')}
+                                              className="bg-blue-600 hover:bg-blue-700"
+                                            >
+                                              Confirmar Conclusão
+                                            </AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+                                    )}
+                                    
+                                    {request.status === 'completed' && (
+                                      (() => {
+                                        const hasProviderReviewed = request.reviews?.some(review => review.reviewerId === user?.id);
+                                        if (hasProviderReviewed) {
+                                          return (
+                                            <Button size="sm" disabled>
+                                              <CheckCircle className="w-4 h-4 mr-2" />
+                                              Cliente Avaliado
+                                            </Button>
+                                          );
+                                        }
+                                        return (
+                                          <Button 
+                                            size="sm"
+                                            onClick={() => handleOpenClientReviewDialog(request)}
+                                            className="bg-blue-600 hover:bg-blue-700"
+                                          >
+                                            <Star className="w-4 h-4 mr-2" />
+                                            Avaliar Cliente
+                                          </Button>
+                                        );
+                                      })()
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8">
+                              <MessageCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                Nenhuma solicitação ainda
+                              </h3>
+                              <p className="text-gray-600">
+                                Suas solicitações de serviço aparecerão aqui.
+                              </p>
                             </div>
                           )}
-                          
-                          {(request.status === 'accepted' || request.status === 'pending_completion') && !request.providerCompletedAt && (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="profile">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Editar Perfil Profissional</CardTitle>
+                          <CardDescription>
+                            Mantenha suas informações pessoais atualizadas
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <Form {...form}>
+                            <form onSubmit={form.handleSubmit(handleUpdateProvider)} className="space-y-6">
+                              <FormField
+                                control={form.control}
+                                name="bio"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Sobre Mim</FormLabel>
+                                    <FormControl>
+                                      <Textarea 
+                                        placeholder="Conte um pouco sobre você, suas especialidades e o que te motiva..."
+                                        rows={4}
+                                        {...field} 
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={form.control}
+                                name="experience"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Experiências</FormLabel>
+                                    <FormControl>
+                                      <Textarea 
+                                        placeholder="Descreva sua experiência profissional, formação, certificações e trabalhos realizados..."
+                                        rows={4}
+                                        {...field}
+                                        value={field.value || ''} 
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={form.control}
+                                name="location"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Localidade</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="Cidade, bairro ou região onde você atende" {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                    <p className="text-sm text-gray-500">
+                                      Formato recomendado: Cidade - Estado (ex: São Paulo - SP)
+                                    </p>
+                                  </FormItem>
+                                )}
+                              />
+
+                              <div className="flex gap-4">
                                 <Button 
-                                  size="sm"
-                                  className="bg-blue-600 hover:bg-blue-700"
+                                  type="submit" 
+                                  disabled={updateProviderMutation.isPending}
+                                  className="bg-primary-600 hover:bg-primary-700"
                                 >
-                                  Marcar como Concluído
+                                  {updateProviderMutation.isPending ? "Salvando..." : "Salvar Alterações"}
                                 </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Confirmar Conclusão do Serviço</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    {checkServiceDate(request) ? (
-                                      <>
-                                        Atenção: O serviço está agendado para <strong>{request.scheduledDate ? formatDateTime(request.scheduledDate) : ''}</strong>. 
-                                        Você está marcando como concluído antes da data/horário agendado. 
-                                        Tem certeza que deseja continuar?
-                                      </>
-                                    ) : (
-                                      <>
-                                        Você está prestes a marcar este serviço como concluído. 
-                                        O cliente também precisará confirmar a conclusão para que o serviço seja finalizado.
-                                      </>
-                                    )}
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                  <AlertDialogAction 
-                                    onClick={() => handleUpdateRequestStatus(request.id, 'completed')}
-                                    className="bg-blue-600 hover:bg-blue-700"
-                                  >
-                                    Confirmar Conclusão
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          )}
-                          
-                                                  {request.status === 'completed' && (
-                            (() => {
-                              const hasProviderReviewed = request.reviews?.some(review => review.reviewerId === user?.id);
-                              if (hasProviderReviewed) {
-                                return (
-                                  <Button size="sm" disabled>
-                                    <CheckCircle className="w-4 h-4 mr-2" />
-                                    Cliente Avaliado
-                                  </Button>
-                                );
-                              }
-                              return (
+                                
                                 <Button 
-                                  size="sm"
-                                  onClick={() => handleOpenClientReviewDialog(request)}
-                                  className="bg-blue-600 hover:bg-blue-700"
+                                  type="button" 
+                                  variant="outline"
+                                  onClick={() => form.reset()}
                                 >
-                                  <Star className="w-4 h-4 mr-2" />
-                                  Avaliar Cliente
+                                  Cancelar
                                 </Button>
-                              );
-                            })()
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <MessageCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      Nenhuma solicitação ainda
-                    </h3>
-                    <p className="text-gray-600">
-                      Suas solicitações de serviço aparecerão aqui.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                              </div>
+                            </form>
+                          </Form>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
 
-          <TabsContent value="profile">
-            <Card>
-              <CardHeader>
-                <CardTitle>Editar Perfil Profissional</CardTitle>
-                <CardDescription>
-                  Mantenha suas informações pessoais atualizadas
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(handleUpdateProvider)} className="space-y-6">
-                    <FormField
-                      control={form.control}
-                      name="bio"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Sobre Mim</FormLabel>
-                          <FormControl>
-                            <Textarea 
-                              placeholder="Conte um pouco sobre você, suas especialidades e o que te motiva..."
-                              rows={4}
-                              {...field} 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    <TabsContent value="analytics">
+                      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                        <Card>
+                          <CardContent className="p-6">
+                            <div className="flex items-center">
+                              <CheckCircle className="w-8 h-8 text-green-600 mr-3" />
+                              <div>
+                                <p className="text-2xl font-bold text-gray-900">{completedServices}</p>
+                                <p className="text-sm text-gray-600">Serviços Concluídos</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
 
-                    <FormField
-                      control={form.control}
-                      name="experience"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Experiências</FormLabel>
-                          <FormControl>
-                            <Textarea 
-                              placeholder="Descreva sua experiência profissional, formação, certificações e trabalhos realizados..."
-                              rows={4}
-                              {...field}
-                              value={field.value || ''} 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                        <Card>
+                          <CardContent className="p-6">
+                            <div className="flex items-center">
+                              <Clock className="w-8 h-8 text-yellow-600 mr-3" />
+                              <div>
+                                <p className="text-2xl font-bold text-gray-900">{pendingRequests}</p>
+                                <p className="text-sm text-gray-600">Pendentes</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
 
-                    <FormField
-                      control={form.control}
-                      name="location"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Localidade</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Cidade, bairro ou região onde você atende" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                          <p className="text-sm text-gray-500">
-                            Formato recomendado: Cidade - Estado (ex: São Paulo - SP)
-                          </p>
-                        </FormItem>
-                      )}
-                    />
+                        <Card>
+                          <CardContent className="p-6">
+                            <div className="flex items-center">
+                              <Star className="w-8 h-8 text-yellow-500 mr-3" />
+                              <div>
+                                <p className="text-2xl font-bold text-gray-900">
+                                  {provider.averageRating > 0 ? provider.averageRating.toFixed(1) : "N/A"}
+                                </p>
+                                <p className="text-sm text-gray-600">Avaliação Média</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
 
-                    <div className="flex gap-4">
-                      <Button 
-                        type="submit" 
-                        disabled={updateProviderMutation.isPending}
-                        className="bg-primary-600 hover:bg-primary-700"
-                      >
-                        {updateProviderMutation.isPending ? "Salvando..." : "Salvar Alterações"}
-                      </Button>
-                      
-                      <Button 
-                        type="button" 
-                        variant="outline"
-                        onClick={() => form.reset()}
-                      >
-                        Cancelar
-                      </Button>
-                    </div>
-                  </form>
-                </Form>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                        <Card>
+                          <CardContent className="p-6">
+                            <div className="flex items-center">
+                              <DollarSign className="w-8 h-8 text-green-600 mr-3" />
+                              <div>
+                                <p className="text-2xl font-bold text-gray-900">R$ {monthlyEarnings.toFixed(0)}</p>
+                                <p className="text-sm text-gray-600">Ganhos do Mês</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
 
-          <TabsContent value="analytics">
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center">
-                    <CheckCircle className="w-8 h-8 text-green-600 mr-3" />
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900">{completedServices}</p>
-                      <p className="text-sm text-gray-600">Serviços Concluídos</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center">
-                    <Clock className="w-8 h-8 text-yellow-600 mr-3" />
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900">{pendingRequests}</p>
-                      <p className="text-sm text-gray-600">Pendentes</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center">
-                    <Star className="w-8 h-8 text-yellow-500 mr-3" />
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900">
-                        {provider.averageRating > 0 ? provider.averageRating.toFixed(1) : "N/A"}
-                      </p>
-                      <p className="text-sm text-gray-600">Avaliação Média</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center">
-                    <DollarSign className="w-8 h-8 text-green-600 mr-3" />
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900">R$ {monthlyEarnings.toFixed(0)}</p>
-                      <p className="text-sm text-gray-600">Ganhos do Mês</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Resumo de Atividades</CardTitle>
-                <CardDescription>
-                  Suas estatísticas de serviços prestados
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="text-gray-600">Total de Solicitações</span>
-                    <span className="font-semibold">{Array.isArray(requests) ? requests.length : 0}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="text-gray-600">Taxa de Aceitação</span>
-                    <span className="font-semibold">
-                      {Array.isArray(requests) && requests.length > 0 
-                        ? `${((requests.filter(r => r.status !== 'cancelled').length / requests.length) * 100).toFixed(1)}%`
-                        : "N/A"
-                      }
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="text-gray-600">Serviços Concluídos</span>
-                    <span className="font-semibold">{completedServices}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-gray-600">Valor Médio por Serviço</span>
-                    <span className="font-semibold">
-                      R$ {completedServices > 0 ? (monthlyEarnings / completedServices).toFixed(2) : "0.00"}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-                  </TabsContent>
-                </Tabs>
-              </>
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Resumo de Atividades</CardTitle>
+                          <CardDescription>
+                            Suas estatísticas de serviços prestados
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-center py-2 border-b">
+                              <span className="text-gray-600">Total de Solicitações</span>
+                              <span className="font-semibold">{Array.isArray(requests) ? requests.length : 0}</span>
+                            </div>
+                            <div className="flex justify-between items-center py-2 border-b">
+                              <span className="text-gray-600">Taxa de Aceitação</span>
+                              <span className="font-semibold">
+                                {Array.isArray(requests) && requests.length > 0 
+                                  ? `${((requests.filter(r => r.status !== 'cancelled').length / requests.length) * 100).toFixed(1)}%`
+                                  : "N/A"
+                                }
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center py-2 border-b">
+                              <span className="text-gray-600">Serviços Concluídos</span>
+                              <span className="font-semibold">{completedServices}</span>
+                            </div>
+                            <div className="flex justify-between items-center py-2">
+                              <span className="text-gray-600">Valor Médio por Serviço</span>
+                              <span className="font-semibold">
+                                R$ {completedServices > 0 ? (monthlyEarnings / completedServices).toFixed(2) : "0.00"}
+                              </span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+                  </Tabs>
+                </>
               )}
             </div>
           </TabsContent>

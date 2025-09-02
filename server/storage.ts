@@ -41,6 +41,7 @@ export interface IStorage {
   // Service Provider operations
   getServiceProvider(id: string): Promise<ServiceProvider | undefined>;
   getServiceProviderWithDetails(id: string): Promise<(ServiceProvider & { user: User; category: ServiceCategory; averageRating: number; reviewCount: number }) | undefined>;
+  getServiceProvidersByUserIdWithDetails(userId: string): Promise<(ServiceProvider & { category: ServiceCategory; averageRating: number; reviewCount: number; })[]>;
   getServiceProviderByUserId(userId: string): Promise<ServiceProvider | undefined>;
   getServiceProviderByUserAndCategory(userId: string, categoryId: string): Promise<ServiceProvider | undefined>;
   getServiceProvidersByCategory(categoryId: string): Promise<(ServiceProvider & { user: User; category: ServiceCategory; averageRating: number; reviewCount: number })[]>;
@@ -69,7 +70,8 @@ export interface IStorage {
   updateRequestStatus(requestId: string, status: string): Promise<void>;
   
   // Review operations
-  getReviewsByProvider(providerId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
+  getReviewsByProvider(providerId: string): Promise<(Review & { reviewer: User })[]>;
+  getReviewsByProviderUser(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
   createReview(review: InsertReview): Promise<Review>;
   
   // Message operations
@@ -155,20 +157,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getServiceProviderWithDetails(id: string): Promise<(ServiceProvider & { user: User; category: ServiceCategory; averageRating: number; reviewCount: number }) | undefined> {
+    const reviewsSubQuery = db
+      .select({
+        providerId: serviceRequests.providerId,
+        avgRating: avg(reviews.rating).as('avg_rating'),
+        reviewCount: count(reviews.id).as('review_count'),
+      })
+      .from(reviews)
+      .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
+      .groupBy(serviceRequests.providerId)
+      .as('reviews_sub');
+
     const result = await db
       .select({
         provider: serviceProviders,
         user: users,
         category: serviceCategories,
-        averageRating: avg(reviews.rating),
-        reviewCount: count(reviews.id),
+        averageRating: reviewsSubQuery.avgRating,
+        reviewCount: reviewsSubQuery.reviewCount,
       })
       .from(serviceProviders)
       .leftJoin(users, eq(serviceProviders.userId, users.id))
       .leftJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
-      .leftJoin(reviews, eq(reviews.revieweeId, users.id))
-      .where(eq(serviceProviders.id, id))
-      .groupBy(serviceProviders.id, users.id, serviceCategories.id);
+      .leftJoin(reviewsSubQuery, eq(serviceProviders.id, reviewsSubQuery.providerId))
+      .where(eq(serviceProviders.id, id));
 
     if (!result.length || !result[0].provider || !result[0].user || !result[0].category) {
       return undefined;
@@ -182,6 +194,38 @@ export class DatabaseStorage implements IStorage {
       averageRating: parseFloat(String(row.averageRating || "0")),
       reviewCount: parseInt(String(row.reviewCount || "0")),
     };
+  }
+
+  async getServiceProvidersByUserIdWithDetails(userId: string): Promise<(ServiceProvider & { category: ServiceCategory; averageRating: number; reviewCount: number; })[]> {
+    const reviewsSubQuery = db
+      .select({
+        providerId: serviceRequests.providerId,
+        avgRating: avg(reviews.rating).as('avg_rating'),
+        reviewCount: count(reviews.id).as('review_count'),
+      })
+      .from(reviews)
+      .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
+      .groupBy(serviceRequests.providerId)
+      .as('reviews_sub');
+
+    const result = await db
+      .select({
+        provider: serviceProviders,
+        category: serviceCategories,
+        averageRating: reviewsSubQuery.avgRating,
+        reviewCount: reviewsSubQuery.reviewCount,
+      })
+      .from(serviceProviders)
+      .leftJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
+      .leftJoin(reviewsSubQuery, eq(serviceProviders.id, reviewsSubQuery.providerId))
+      .where(eq(serviceProviders.userId, userId));
+
+    return result.map(row => ({
+      ...row.provider,
+      category: row.category!,
+      averageRating: parseFloat(String(row.averageRating || "0")),
+      reviewCount: parseInt(String(row.reviewCount || "0")),
+    }));
   }
 
   async getServiceProviderByUserId(userId: string): Promise<ServiceProvider | undefined> {
@@ -446,7 +490,25 @@ export class DatabaseStorage implements IStorage {
       .where(eq(serviceRequests.id, requestId));
   }
 
-  async getReviewsByProvider(providerId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]> {
+  async getReviewsByProvider(serviceProviderId: string): Promise<(Review & { reviewer: User })[]> {
+    const results = await db
+      .select({
+        review: reviews,
+        reviewer: users,
+      })
+      .from(reviews)
+      .innerJoin(users, eq(reviews.reviewerId, users.id))
+      .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
+      .where(eq(serviceRequests.providerId, serviceProviderId))
+      .orderBy(desc(reviews.createdAt));
+
+    return results.map(r => ({
+      ...r.review,
+      reviewer: r.reviewer,
+    }));
+  }
+
+  async getReviewsByProviderUser(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]> {
     const results = await db
       .select()
       .from(reviews)
@@ -454,7 +516,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
       .innerJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
       .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
-      .where(eq(reviews.revieweeId, providerId)) // Correctly filter by the person being reviewed
+      .where(eq(reviews.revieweeId, userId)) // Correctly filter by the person being reviewed
       .orderBy(desc(reviews.createdAt));
 
     return results.map(r => ({

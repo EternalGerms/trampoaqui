@@ -443,6 +443,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get current user's provider profiles with details
+  app.get("/api/users/me/providers", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const providers = await storage.getServiceProvidersByUserIdWithDetails(req.user!.userId);
+      res.json(providers);
+    } catch (error) {
+      console.error("Error fetching user's providers:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // Messages
   app.post("/api/messages", authenticateToken, async (req: Request, res: Response) => {
     try {
@@ -656,9 +667,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get reviews by provider user id
-  app.get("/api/providers/:userId/reviews", async (req: Request, res: Response) => {
+  app.get("/api/providers/user/:userId/reviews", async (req: Request, res: Response) => {
     try {
-      const reviews = await storage.getReviewsByProvider(req.params.userId);
+      const reviews = await storage.getReviewsByProviderUser(req.params.userId);
       res.json(reviews);
     } catch (error) {
       console.error("Error fetching provider reviews:", error);
