@@ -5,6 +5,7 @@ export interface User {
   email: string;
   name: string;
   isProviderEnabled: boolean;
+  isAdmin: boolean;
   bio?: string;
   experience?: string;
   location?: string;

@@ -2,10 +2,10 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { sql } from "drizzle-orm";
+import { sql, eq, desc, or } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { insertUserSchema, insertServiceProviderSchema, insertServiceRequestSchema, updateServiceRequestSchema, insertMessageSchema, insertReviewSchema, insertNegotiationSchema, updateProviderProfileSchema } from "@shared/schema";
+import { insertUserSchema, insertServiceProviderSchema, insertServiceRequestSchema, updateServiceRequestSchema, insertMessageSchema, insertReviewSchema, insertNegotiationSchema, updateProviderProfileSchema, insertWithdrawalSchema, users, serviceProviders, serviceRequests, serviceCategories } from "@shared/schema";
 import { z } from "zod";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
@@ -17,6 +17,7 @@ declare global {
       user?: {
         userId: string;
         isProviderEnabled: boolean;
+        isAdmin: boolean;
       };
     }
   }
@@ -40,13 +41,22 @@ const authenticateToken = (req: Request, res: Response, next: Function) => {
     if (decoded && decoded.userId) {
       req.user = {
         userId: decoded.userId,
-        isProviderEnabled: decoded.isProviderEnabled || false
+        isProviderEnabled: decoded.isProviderEnabled || false,
+        isAdmin: decoded.isAdmin || false
       };
       next();
     } else {
       return res.status(403).json({ message: 'Invalid token structure' });
     }
   });
+};
+
+// Middleware to authenticate admin users
+const authenticateAdmin = (req: Request, res: Response, next: Function) => {
+  if (!req.user || !req.user.isAdmin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  next();
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -172,7 +182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Generate JWT token
-      const token = jwt.sign({ userId: user.id, isProviderEnabled: user.isProviderEnabled }, JWT_SECRET);
+      const token = jwt.sign({ userId: user.id, isProviderEnabled: user.isProviderEnabled, isAdmin: user.isAdmin }, JWT_SECRET);
       
       res.json({ 
         token, 
@@ -180,7 +190,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: user.id, 
           email: user.email, 
           name: user.name, 
-          isProviderEnabled: user.isProviderEnabled 
+          isProviderEnabled: user.isProviderEnabled,
+          isAdmin: user.isAdmin
         } 
       });
     } catch (error) {
@@ -202,7 +213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
-      const token = jwt.sign({ userId: user.id, isProviderEnabled: user.isProviderEnabled }, JWT_SECRET);
+      const token = jwt.sign({ userId: user.id, isProviderEnabled: user.isProviderEnabled, isAdmin: user.isAdmin }, JWT_SECRET);
       
       res.json({ 
         token, 
@@ -210,7 +221,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: user.id, 
           email: user.email, 
           name: user.name, 
-          isProviderEnabled: user.isProviderEnabled 
+          isProviderEnabled: user.isProviderEnabled,
+          isAdmin: user.isAdmin
         } 
       });
     } catch (error) {
@@ -231,6 +243,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: user.email, 
         name: user.name, 
         isProviderEnabled: user.isProviderEnabled,
+        isAdmin: user.isAdmin,
         bio: user.bio,
         experience: user.experience,
         location: user.location,
@@ -535,12 +548,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Get service requests for the current user as a provider
-      const provider = await storage.getServiceProviderByUserId(req.user!.userId);
-      console.log("Provider found:", provider);
+      // Get all service providers for the current user
+      const providers = await storage.getServiceProvidersByUserIdWithDetails(req.user!.userId);
+      console.log("Providers found:", providers);
       
-      if (!provider) {
-        console.log("No provider profile found for user:", req.user!.userId);
+      if (!providers || providers.length === 0) {
+        console.log("No provider profiles found for user:", req.user!.userId);
         return res.status(200).json({
           message: "Provider profile not found",
           code: "PROVIDER_PROFILE_NOT_FOUND",
@@ -552,9 +565,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      console.log("Looking for requests with providerId:", provider.id);
-      const requests = await storage.getServiceRequestsByProviderWithNegotiations(provider.id);
-      console.log("Requests found:", requests);
+      // Get requests for all providers of this user
+      const allRequests = [];
+      for (const provider of providers) {
+        console.log("Looking for requests with providerId:", provider.id);
+        const providerRequests = await storage.getServiceRequestsByProviderWithNegotiations(provider.id);
+        console.log(`Requests found for provider ${provider.id}:`, providerRequests);
+        allRequests.push(...providerRequests);
+      }
+      
+      // Sort all requests by creation date (most recent first)
+      const requests = allRequests.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      console.log("Total requests found:", requests);
       
       res.json({
         message: "Success",
@@ -630,6 +654,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!hasClientCompleted || !hasProviderCompleted) {
           // Change status to 'pending_completion' if only one party has confirmed
           updateData.status = 'pending_completion';
+        } else {
+          // Both parties have confirmed - add balance to provider
+          if (request.proposedPrice) {
+            const serviceAmount = parseFloat(request.proposedPrice.toString());
+            const platformFee = serviceAmount * 0.05; // 5% platform fee
+            const providerAmount = serviceAmount - platformFee;
+            
+            await storage.addToUserBalance(provider.userId, providerAmount);
+          }
         }
       }
 
@@ -673,6 +706,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(reviews);
     } catch (error) {
       console.error("Error fetching provider reviews:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get reviews by specific service provider
+  app.get("/api/reviews/service-provider/:serviceProviderId", async (req: Request, res: Response) => {
+    try {
+      const reviews = await storage.getReviewsByServiceProvider(req.params.serviceProviderId);
+      res.json(reviews);
+    } catch (error) {
+      console.error("Error fetching service provider reviews:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get user by ID
+  app.get("/api/users/:id", async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get reviews received by user (as client)
+  app.get("/api/reviews/user/:userId/received", async (req: Request, res: Response) => {
+    try {
+      const reviews = await storage.getReviewsByUserReceived(req.params.userId);
+      res.json(reviews);
+    } catch (error) {
+      console.error("Error fetching user received reviews:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get reviews sent by user (as client)
+  app.get("/api/reviews/user/:userId/sent", async (req: Request, res: Response) => {
+    try {
+      const reviews = await storage.getReviewsByUserSent(req.params.userId);
+      res.json(reviews);
+    } catch (error) {
+      console.error("Error fetching user sent reviews:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get reviews received by user as provider
+  app.get("/api/reviews/provider/user/:userId/received", async (req: Request, res: Response) => {
+    try {
+      const reviews = await storage.getReviewsByProviderUser(req.params.userId);
+      res.json(reviews);
+    } catch (error) {
+      console.error("Error fetching provider user reviews:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get reviews received by user as client
+  app.get("/api/reviews/client/user/:userId/received", async (req: Request, res: Response) => {
+    try {
+      const reviews = await storage.getReviewsByUserAsClientReceived(req.params.userId);
+      res.json(reviews);
+    } catch (error) {
+      console.error("Error fetching client user received reviews:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get reviews sent by user as client
+  app.get("/api/reviews/client/user/:userId/sent", async (req: Request, res: Response) => {
+    try {
+      const reviews = await storage.getReviewsByUserAsClientSent(req.params.userId);
+      res.json(reviews);
+    } catch (error) {
+      console.error("Error fetching client user sent reviews:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get reviews received by user as provider (specific)
+  app.get("/api/reviews/provider/user/:userId/received-specific", async (req: Request, res: Response) => {
+    try {
+      const reviews = await storage.getReviewsByUserAsProviderReceived(req.params.userId);
+      res.json(reviews);
+    } catch (error) {
+      console.error("Error fetching provider user received reviews:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -760,7 +884,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // If accepted, update the request with the accepted negotiation details
       if (status === 'accepted') {
         await storage.updateServiceRequest(currentNegotiation.requestId, {
-          status: 'accepted',
+          status: 'payment_pending', // Change to payment_pending instead of accepted
           proposedPrice: currentNegotiation.proposedPrice || undefined,
           proposedHours: currentNegotiation.proposedHours || undefined,
           proposedDays: currentNegotiation.proposedDays || undefined,
@@ -876,6 +1000,252 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Error creating counter proposal:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Payment routes
+  app.post("/api/requests/:id/payment", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const { paymentMethod } = req.body;
+      
+      if (!['boleto', 'pix', 'credit_card'].includes(paymentMethod)) {
+        return res.status(400).json({ message: "Invalid payment method" });
+      }
+      
+      const request = await storage.getServiceRequest(req.params.id);
+      if (!request) {
+        return res.status(404).json({ message: "Request not found" });
+      }
+      
+      // Check if user is the client of this request
+      if (request.clientId !== req.user!.userId) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+      
+      // Check if request is in payment_pending status
+      if (request.status !== 'payment_pending') {
+        return res.status(400).json({ message: "Request is not in payment pending status" });
+      }
+      
+      const updatedRequest = await storage.updateServiceRequestPayment(req.params.id, paymentMethod);
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error("Error processing payment:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/requests/:id/complete-payment", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const request = await storage.getServiceRequest(req.params.id);
+      if (!request) {
+        return res.status(404).json({ message: "Request not found" });
+      }
+      
+      // Check if user is the client of this request
+      if (request.clientId !== req.user!.userId) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+      
+      // Check if request has payment method set
+      if (!request.paymentMethod) {
+        return res.status(400).json({ message: "Payment method not set" });
+      }
+      
+      const updatedRequest = await storage.completeServiceRequestPayment(req.params.id);
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error("Error completing payment:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Balance routes
+  app.get("/api/users/me/balance", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const balance = await storage.getUserBalance(req.user!.userId);
+      res.json({ balance });
+    } catch (error) {
+      console.error("Error fetching balance:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Withdrawal routes
+  app.post("/api/withdrawals", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const { amount } = req.body;
+      
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ message: "Invalid amount" });
+      }
+      
+      const currentBalance = await storage.getUserBalance(req.user!.userId);
+      if (currentBalance < amount) {
+        return res.status(400).json({ message: "Insufficient balance" });
+      }
+      
+      const withdrawal = await storage.createWithdrawal({
+        userId: req.user!.userId,
+        amount: amount.toString(),
+        status: 'pending'
+      });
+      
+      // Subtract from balance
+      await storage.subtractFromUserBalance(req.user!.userId, amount);
+      
+      res.json(withdrawal);
+    } catch (error) {
+      console.error("Error creating withdrawal:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/withdrawals", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const withdrawals = await storage.getWithdrawalsByUser(req.user!.userId);
+      res.json(withdrawals);
+    } catch (error) {
+      console.error("Error fetching withdrawals:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Admin routes
+  app.get("/api/admin/dashboard", authenticateToken, authenticateAdmin, async (req: Request, res: Response) => {
+    try {
+      // Get system statistics
+      const totalUsers = await db.select({ count: sql<number>`count(*)` }).from(users);
+      const totalProviders = await db.select({ count: sql<number>`count(*)` }).from(serviceProviders);
+      const totalRequests = await db.select({ count: sql<number>`count(*)` }).from(serviceRequests);
+      const totalCategories = await db.select({ count: sql<number>`count(*)` }).from(serviceCategories);
+      
+      // Get recent users
+      const recentUsers = await db.select().from(users).orderBy(desc(users.createdAt)).limit(10);
+      
+      // Get recent service requests
+      const recentRequests = await db
+        .select({
+          request: serviceRequests,
+          client: users,
+          provider: serviceProviders,
+          category: serviceCategories
+        })
+        .from(serviceRequests)
+        .leftJoin(users, eq(serviceRequests.clientId, users.id))
+        .leftJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
+        .leftJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
+        .orderBy(desc(serviceRequests.createdAt))
+        .limit(10);
+
+      res.json({
+        statistics: {
+          totalUsers: totalUsers[0]?.count || 0,
+          totalProviders: totalProviders[0]?.count || 0,
+          totalRequests: totalRequests[0]?.count || 0,
+          totalCategories: totalCategories[0]?.count || 0
+        },
+        recentUsers,
+        recentRequests: recentRequests.map(r => ({
+          ...r.request,
+          client: r.client,
+          provider: r.provider ? { ...r.provider, category: r.category } : null
+        }))
+      });
+    } catch (error) {
+      console.error("Error fetching admin dashboard data:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get all users (admin only)
+  app.get("/api/admin/users", authenticateToken, authenticateAdmin, async (req: Request, res: Response) => {
+    try {
+      const { page = 1, limit = 20, search = '' } = req.query;
+      const offset = (Number(page) - 1) * Number(limit);
+      
+      const usersList = await db
+        .select()
+        .from(users)
+        .where(
+          search 
+            ? or(
+                sql`${users.name} ILIKE ${'%' + search + '%'}`,
+                sql`${users.email} ILIKE ${'%' + search + '%'}`
+              )
+            : undefined
+        )
+        .orderBy(desc(users.createdAt))
+        .limit(Number(limit))
+        .offset(offset);
+      
+      res.json(usersList);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get all service requests (admin only)
+  app.get("/api/admin/requests", authenticateToken, authenticateAdmin, async (req: Request, res: Response) => {
+    try {
+      const { page = 1, limit = 20, status = '' } = req.query;
+      const offset = (Number(page) - 1) * Number(limit);
+      
+      const requests = await db
+        .select({
+          request: serviceRequests,
+          client: users,
+          provider: serviceProviders,
+          category: serviceCategories
+        })
+        .from(serviceRequests)
+        .leftJoin(users, eq(serviceRequests.clientId, users.id))
+        .leftJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
+        .leftJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
+        .where(
+          status ? eq(serviceRequests.status, status as string) : undefined
+        )
+        .orderBy(desc(serviceRequests.createdAt))
+        .limit(Number(limit))
+        .offset(offset);
+
+      res.json(requests.map(r => ({
+        ...r.request,
+        client: r.client,
+        provider: r.provider ? { ...r.provider, category: r.category } : null
+      })));
+    } catch (error) {
+      console.error("Error fetching requests:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Update user admin status
+  app.put("/api/admin/users/:id/admin", authenticateToken, authenticateAdmin, async (req: Request, res: Response) => {
+    try {
+      const { isAdmin } = req.body;
+      const user = await storage.updateUser(req.params.id, { isAdmin });
+      res.json(user);
+    } catch (error) {
+      console.error("Error updating user admin status:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Delete user (admin only)
+  app.delete("/api/admin/users/:id", authenticateToken, authenticateAdmin, async (req: Request, res: Response) => {
+    try {
+      // Prevent admin from deleting themselves
+      if (req.params.id === req.user!.userId) {
+        return res.status(400).json({ message: "Cannot delete your own account" });
+      }
+      
+      await db.delete(users).where(eq(users.id, req.params.id));
+      res.json({ message: "User deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting user:", error);
       res.status(500).json({ message: "Server error" });
     }
   });

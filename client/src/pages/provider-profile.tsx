@@ -142,6 +142,21 @@ export default function ProviderProfile() {
     ? reviews.filter((r) => r.revieweeId === provider?.userId && r.reviewerId !== provider?.userId)
     : [];
 
+  // Function to calculate correct ratings for the provider, excluding their own reviews
+  const getCorrectProviderRating = () => {
+    if (filteredReviews.length === 0) {
+      return { averageRating: 0, reviewCount: 0 };
+    }
+
+    const totalRating = filteredReviews.reduce((sum, review) => sum + review.rating, 0);
+    const averageRating = totalRating / filteredReviews.length;
+
+    return {
+      averageRating: averageRating,
+      reviewCount: filteredReviews.length
+    };
+  };
+
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/categories"],
   });
@@ -373,12 +388,19 @@ export default function ProviderProfile() {
                     <p className="text-primary-600 font-medium text-lg">{provider.category.name}</p>
                     <div className="flex items-center mt-2">
                       <Star className="w-5 h-5 text-yellow-500 fill-current mr-1" />
-                      <span className="font-semibold">
-                        {provider.averageRating > 0 ? provider.averageRating.toFixed(1) : "N/A"}
-                      </span>
-                      <span className="text-gray-600 ml-1">
-                        ({filteredReviews.length} avaliações)
-                      </span>
+                      {(() => {
+                        const correctedRating = getCorrectProviderRating();
+                        return (
+                          <>
+                            <span className="font-semibold">
+                              {correctedRating.averageRating > 0 ? correctedRating.averageRating.toFixed(1) : "N/A"}
+                            </span>
+                            <span className="text-gray-600 ml-1">
+                              ({correctedRating.reviewCount} avaliações)
+                            </span>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div className="text-right">

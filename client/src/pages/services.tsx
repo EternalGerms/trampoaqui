@@ -101,7 +101,11 @@ export default function Services() {
   }, [allProviders, searchQuery, location, sortBy]);
 
   const handleContactProvider = (providerId: string) => {
-    setLocation(`/provider-profile/${providerId}`);
+    // Find the provider to get the user ID
+    const provider = allProviders.find(p => p.id === providerId);
+    if (provider) {
+      setLocation(`/profile/${provider.userId}`);
+    }
   };
 
   const handleViewService = (providerId: string) => {

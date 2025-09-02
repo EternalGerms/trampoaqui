@@ -21,6 +21,7 @@ import { z } from "zod";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import ReviewDialog from "@/components/review-dialog";
+import PaymentDialog from "@/components/payment-dialog";
 import { 
   User, 
   Briefcase, 
@@ -94,6 +95,8 @@ export default function Dashboard() {
   const [counterProposalNegotiationId, setCounterProposalNegotiationId] = useState<string | null>(null);
   const [originalNegotiationData, setOriginalNegotiationData] = useState<any>(null);
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [selectedRequestForPayment, setSelectedRequestForPayment] = useState<any>(null);
   const [selectedRequestForReview, setSelectedRequestForReview] = useState<ServiceRequest | null>(null);
 
   // Counter proposal schema
@@ -214,11 +217,55 @@ export default function Dashboard() {
     },
   });
 
+  // Payment mutations
+  const processPaymentMutation = useMutation({
+    mutationFn: async ({ requestId, paymentMethod }: { requestId: string; paymentMethod: string }) => {
+      const response = await apiRequest('POST', `/api/requests/${requestId}/payment`, { paymentMethod });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Método de pagamento selecionado!",
+        description: "Agora você pode confirmar o pagamento.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao processar pagamento",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const completePaymentMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      const response = await apiRequest('POST', `/api/requests/${requestId}/complete-payment`);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Pagamento confirmado!",
+        description: "O prestador foi notificado e pode agendar o serviço.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao confirmar pagamento",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const getStatusColor = (status: string) =>
     status === 'completed' ? 'bg-green-100 text-green-800' :
     status === 'accepted' ? 'bg-blue-100 text-blue-800' :
     status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
     status === 'negotiating' ? 'bg-blue-100 text-blue-800' :
+    status === 'payment_pending' ? 'bg-orange-100 text-orange-800' :
     status === 'pending_completion' ? 'bg-blue-100 text-blue-800' :
     status === 'cancelled' ? 'bg-red-100 text-red-800' :
     'bg-gray-100 text-gray-800';
@@ -228,9 +275,27 @@ export default function Dashboard() {
     status === 'accepted' ? 'Aceito' :
     status === 'pending' ? 'Pendente' :
     status === 'negotiating' ? 'Negociando' :
-    status === 'pending_completion' ? 'Negociando' :
+    status === 'payment_pending' ? 'Aguardando Pagamento' :
+    status === 'pending_completion' ? 'Aguardando Conclusão' :
     status === 'cancelled' ? 'Cancelado' :
     status;
+
+  const handlePaymentMethodSelected = (paymentMethod: string) => {
+    if (selectedRequestForPayment) {
+      processPaymentMutation.mutate({
+        requestId: selectedRequestForPayment.id,
+        paymentMethod
+      });
+      // Automatically complete payment after method selection
+      setTimeout(() => {
+        handleCompletePayment(selectedRequestForPayment.id);
+      }, 1000); // Small delay to ensure the first mutation completes
+    }
+  };
+
+  const handleCompletePayment = (requestId: string) => {
+    completePaymentMutation.mutate(requestId);
+  };
 
   // Function to get display status text considering the actual request status
   const getDisplayStatusText = (request: ServiceRequest) => {
@@ -333,8 +398,8 @@ export default function Dashboard() {
   // Function to get the effective request status
   // This determines if a request should show "Negociando" or "Cancelado"
   const getEffectiveRequestStatus = (request: ServiceRequest) => {
-    // If request is already completed, accepted, or cancelled, return that status
-    if (['completed', 'accepted', 'cancelled'].includes(request.status)) {
+    // If request is already completed, accepted, payment_pending, or cancelled, return that status
+    if (['completed', 'accepted', 'payment_pending', 'cancelled'].includes(request.status)) {
       return request.status;
     }
 
@@ -541,17 +606,65 @@ export default function Dashboard() {
                                       Fazer Contraproposta
                                     </Button>
                                   )}
-                                  
-                                  {/* Show "Marcar como Concluído" button when service is pending completion and client has not confirmed yet */}
-                                  {request.status === 'pending_completion' && !request.clientCompletedAt && (
+
+                                  {/* Show payment button when request is in payment_pending status */}
+                                  {request.status === 'payment_pending' && (
                                     <Button
                                       size="sm"
-                                      onClick={() => handleUpdateRequestStatus(request.id, 'completed')}
-                                      className="bg-green-600 hover:bg-green-700"
+                                      onClick={() => {
+                                        setSelectedRequestForPayment(request);
+                                        setShowPaymentDialog(true);
+                                      }}
+                                      className="bg-orange-600 hover:bg-orange-700"
                                     >
-                                      <CheckCircle className="w-4 h-4 mr-2" />
-                                      Marcar como Concluído
+                                      <DollarSign className="w-4 h-4 mr-2" />
+                                      Realizar Pagamento
                                     </Button>
+                                  )}
+
+
+                                  
+                                  {/* Show "Marcar como Concluído" button when service is accepted or pending completion and client has not confirmed yet */}
+                                  {(request.status === 'accepted' || request.status === 'pending_completion') && !request.clientCompletedAt && (
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button
+                                          size="sm"
+                                          className="bg-green-600 hover:bg-green-700"
+                                        >
+                                          <CheckCircle className="w-4 h-4 mr-2" />
+                                          Marcar como Concluído
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Confirmar Conclusão do Serviço</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            {checkServiceDate(request) ? (
+                                              <>
+                                                Atenção: O serviço está agendado para <strong>{request.scheduledDate ? new Date(request.scheduledDate).toLocaleString('pt-BR') : ''}</strong>. 
+                                                Você está marcando como concluído antes da data/horário agendado. 
+                                                Tem certeza que deseja continuar?
+                                              </>
+                                            ) : (
+                                              <>
+                                                Você está prestes a marcar este serviço como concluído. 
+                                                O prestador também precisará confirmar a conclusão para que o serviço seja finalizado.
+                                              </>
+                                            )}
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                          <AlertDialogAction 
+                                            onClick={() => handleUpdateRequestStatus(request.id, 'completed')}
+                                            className="bg-green-600 hover:bg-green-700"
+                                          >
+                                            Confirmar Conclusão
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
                                   )}
                                   
                                   {getEffectiveRequestStatus(request) === 'completed' && (
@@ -701,6 +814,19 @@ export default function Dashboard() {
           providerName={selectedRequestForReview.provider.user.name}
           isOpen={reviewDialogOpen}
           onOpenChange={setReviewDialogOpen}
+        />
+      )}
+
+      {/* Payment Dialog */}
+      {selectedRequestForPayment && (
+        <PaymentDialog
+          isOpen={showPaymentDialog}
+          onClose={() => {
+            setShowPaymentDialog(false);
+            setSelectedRequestForPayment(null);
+          }}
+          onPaymentMethodSelected={handlePaymentMethodSelected}
+          amount={parseFloat(selectedRequestForPayment.proposedPrice || '0')}
         />
       )}
       

@@ -1,4 +1,5 @@
-const { Pool } = require('pg');
+import pkg from 'pg';
+const { Pool } = pkg;
 
 // Configuração do banco (mesma do docker-compose)
 const pool = new Pool({
@@ -90,16 +91,15 @@ async function clearDatabase() {
 }
 
 // Executar se chamado diretamente
-if (require.main === module) {
-  clearDatabase()
-    .then(() => {
-      console.log('✅ Script executado com sucesso');
-      process.exit(0);
-    })
-    .catch((error) => {
-      console.error('❌ Erro na execução:', error);
-      process.exit(1);
-    });
-}
+console.log('🚀 Iniciando script de limpeza do banco...');
+clearDatabase()
+  .then(() => {
+    console.log('✅ Script executado com sucesso');
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error('❌ Erro na execução:', error);
+    process.exit(1);
+  });
 
-module.exports = { clearDatabase };
+export { clearDatabase };

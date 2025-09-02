@@ -8,10 +8,11 @@ import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Services from "@/pages/services";
 import Dashboard from "@/pages/dashboard";
+import Profile from "@/pages/profile";
 import ProviderProfile from "@/pages/provider-profile";
-import ProviderPublicProfile from "@/pages/provider-public-profile";
 import ProviderDashboard from "@/pages/provider-dashboard";
 import CompleteProfile from "@/pages/complete-profile";
+import AdminDashboard from "@/pages/admin-dashboard";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -22,10 +23,11 @@ function Router() {
       <Route path="/register" component={Register} />
       <Route path="/services" component={Services} />
       <Route path="/dashboard" component={Dashboard} />
+      <Route path="/profile/:id" component={Profile} />
       <Route path="/provider/:id" component={ProviderProfile} />
-      <Route path="/provider-profile/:id" component={ProviderPublicProfile} />
       <Route path="/provider-dashboard" component={ProviderDashboard} />
       <Route path="/complete-profile" component={CompleteProfile} />
+      <Route path="/admin" component={AdminDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

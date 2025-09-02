@@ -47,21 +47,21 @@ A página de perfil público do prestador é uma funcionalidade que permite visu
 2. **Dashboard**: Botão "Ver Perfil" na seção "Meu Perfil"
 
 ### **Para Visitantes:**
-- **URL Direta**: `/provider-profile/{id}`
+- **URL Direta**: `/profile/{userId}`
 - **Lista de Serviços**: Link a partir da busca de profissionais
 
 ## 🔧 Implementação Técnica
 
 ### **Arquivos Criados/Modificados:**
 
-1. **`client/src/pages/provider-public-profile.tsx`** - Nova página de perfil
-2. **`client/src/App.tsx`** - Nova rota `/provider-profile/:id`
+1. **`client/src/pages/profile.tsx`** - Nova página de perfil unificada
+2. **`client/src/App.tsx`** - Nova rota `/profile/:id`
 3. **`client/src/components/header.tsx`** - Nome clicável no header
 4. **`client/src/pages/provider-dashboard.tsx`** - Botão "Ver Perfil"
 
 ### **Rota:**
 ```
-GET /provider-profile/:id
+GET /profile/:id
 ```
 
 ### **Dependências:**

@@ -226,6 +226,10 @@ export default function ProviderDashboard() {
 
   const { data: requests = [], isLoading: requestsLoading } = useQuery<RequestWithClient[]>({
     queryKey: ["/api/requests/provider"],
+    queryFn: async () => {
+      const response = await authenticatedRequest('GET', '/api/requests/provider');
+      return response.json();
+    },
     refetchOnWindowFocus: true,
     select: (data: any) => {
       console.log("Raw data from API:", data);
@@ -594,8 +598,8 @@ export default function ProviderDashboard() {
   // Function to get the effective request status
   // This determines if a request should show "Negociando" or "Cancelado"
   const getEffectiveRequestStatus = (request: RequestWithClient) => {
-    // If request is already completed, accepted, or cancelled, return that status
-    if (['completed', 'accepted', 'cancelled'].includes(request.status)) {
+    // If request is already completed, accepted, payment_pending, or cancelled, return that status
+    if (['completed', 'accepted', 'payment_pending', 'cancelled'].includes(request.status)) {
       return request.status;
     }
 
@@ -756,6 +760,8 @@ export default function ProviderDashboard() {
         return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><MessageCircle className="w-3 h-3 mr-1" />Negociando</Badge>;
       case 'accepted':
         return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Clock className="w-3 h-3 mr-1" />Aceito</Badge>;
+      case 'payment_pending':
+        return <Badge variant="secondary" className="bg-orange-100 text-orange-800"><Clock className="w-3 h-3 mr-1" />Aguardando Pagamento</Badge>;
       case 'pending_completion':
         return <Badge variant="secondary" className="bg-purple-100 text-purple-800"><Clock className="w-3 h-3 mr-1" />Aguardando Confirmação</Badge>;
       case 'completed':
@@ -774,6 +780,39 @@ export default function ProviderDashboard() {
         .filter(r => r.status === 'completed' && r.proposedPrice)
         .reduce((sum, r) => sum + parseFloat(r.proposedPrice || "0"), 0)
     : 0;
+
+  // Function to calculate correct ratings for a service provider, excluding their own reviews
+  const getCorrectRatingForProvider = (serviceProvider: any) => {
+    if (!Array.isArray(requests) || requests.length === 0) {
+      return { averageRating: 0, reviewCount: 0 };
+    }
+
+    // Get all reviews for requests related to this provider
+    const allReviews: any[] = [];
+    
+    requests.forEach(request => {
+      if (request.providerId === serviceProvider.id && Array.isArray(request.reviews)) {
+        // Only include reviews where the reviewer is NOT the service provider
+        const clientReviews = request.reviews.filter(review => 
+          review.reviewerId !== serviceProvider.userId && 
+          review.revieweeId === serviceProvider.userId
+        );
+        allReviews.push(...clientReviews);
+      }
+    });
+
+    if (allReviews.length === 0) {
+      return { averageRating: 0, reviewCount: 0 };
+    }
+
+    const totalRating = allReviews.reduce((sum, review) => sum + review.rating, 0);
+    const averageRating = totalRating / allReviews.length;
+
+    return {
+      averageRating: averageRating,
+      reviewCount: allReviews.length
+    };
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -824,13 +863,22 @@ export default function ProviderDashboard() {
                               <p className="font-medium text-gray-900 text-sm">{request.title}</p>
                               <p className="text-gray-600 text-xs">Profissional: {request.provider?.user?.name || 'N/A'}</p>
                             </div>
-                            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                            <Badge variant="secondary" className={
+                              request.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              request.status === 'accepted' ? 'bg-blue-100 text-blue-800' :
+                              request.status === 'payment_pending' ? 'bg-orange-100 text-orange-800' :
+                              request.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              request.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                              request.status === 'negotiating' ? 'bg-blue-100 text-blue-800' :
+                              request.status === 'pending_completion' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                            }>
                               {request.status === 'pending' ? 'Pendente' :
                                request.status === 'accepted' ? 'Aceito' :
+                               request.status === 'payment_pending' ? 'Aguardando Pagamento' :
                                request.status === 'completed' ? 'Concluído' :
                                request.status === 'cancelled' ? 'Cancelado' :
                                request.status === 'negotiating' ? 'Negociando' :
-                               request.status === 'pending_completion' ? 'Pendente' : request.status}
+                               request.status === 'pending_completion' ? 'Aguardando Conclusão' : request.status}
                             </Badge>
                           </div>
                           <p className="text-gray-600 text-sm mb-2">{request.description}</p>
@@ -888,25 +936,29 @@ export default function ProviderDashboard() {
                     </TabsList>
 
                     <TabsContent value="overview">
-                      <div className="grid lg:grid-cols-3 gap-6">
-                        {/* Profile Overview */}
-                        <Card>
-                          <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                              <User className="w-5 h-5" />
-                              Meu Perfil
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            {provider ? (
+                      <div className="max-w-4xl mx-auto">
+                        <div className="grid md:grid-cols-2 gap-6">
+                          {/* Profile Overview */}
+                          <Card>
+                            <CardHeader>
+                              <CardTitle className="flex items-center gap-2">
+                                <User className="w-5 h-5" />
+                                Meu Perfil
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              {provider ? (
                               <>
                                 <div className="flex items-center mb-4">
-                                  <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mr-4">
-                                    <i className={`${provider.category?.icon || 'fas fa-user'} text-primary-600 text-xl`}></i>
+                                  {/* Placeholder para foto de perfil */}
+                                  <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mr-4 border-2 border-gray-300">
+                                    <User className="w-8 h-8 text-gray-400" />
                                   </div>
                                   <div>
-                                    <p className="font-semibold text-gray-900">{provider.user?.name}</p>
-                                    <p className="text-primary-600 text-sm">{provider.category?.name}</p>
+                                    <p className="font-semibold text-gray-900">{user?.name}</p>
+                                    <p className="text-primary-600 text-sm">
+                                      {userProviders.length > 1 ? "Prestador de Serviços" : provider.category?.name}
+                                    </p>
                                   </div>
                                 </div>
                                 <div className="space-y-2">
@@ -914,9 +966,14 @@ export default function ProviderDashboard() {
                                     <span className="text-gray-600">Avaliação:</span>
                                     <div className="flex items-center">
                                       <Star className="w-4 h-4 text-yellow-400 fill-current mr-1" />
-                                      <span className="font-medium">
-                                        {provider.averageRating > 0 ? provider.averageRating.toFixed(1) : "N/A"}
-                                      </span>
+                                      {(() => {
+                                        const correctedRating = getCorrectRatingForProvider(provider);
+                                        return (
+                                          <span className="font-medium">
+                                            {correctedRating.averageRating > 0 ? correctedRating.averageRating.toFixed(1) : "N/A"}
+                                          </span>
+                                        );
+                                      })()}
                                     </div>
                                   </div>
                                   <div className="flex justify-between text-sm">
@@ -932,7 +989,7 @@ export default function ProviderDashboard() {
                                 {/* Botão Ver Perfil */}
                                 <div className="mt-4 pt-4 border-t border-gray-200">
                                   <Button 
-                                    onClick={() => setLocation(`/provider-profile/${provider.id}`)}
+                                    onClick={() => setLocation(`/profile/${user?.id}`)}
                                     variant="outline"
                                     size="sm"
                                     className="w-full"
@@ -976,8 +1033,6 @@ export default function ProviderDashboard() {
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
-
-
                             {/* Lista de serviços existentes */}
                             {userProviders.length > 0 ? (
                               <div className="space-y-3">
@@ -1009,7 +1064,14 @@ export default function ProviderDashboard() {
                                           
                                           <div className="flex items-center text-xs text-gray-500">
                                             <Star className="w-3 h-3 mr-1 text-yellow-500" />
-                                            <span>{serviceProvider.averageRating?.toFixed(1) || "0.0"} ({serviceProvider.reviewCount})</span>
+                                            {(() => {
+                                              const correctedRating = getCorrectRatingForProvider(serviceProvider);
+                                              return (
+                                                <span>
+                                                  {correctedRating.averageRating > 0 ? correctedRating.averageRating.toFixed(1) : "0.0"} ({correctedRating.reviewCount})
+                                                </span>
+                                              );
+                                            })()}
                                           </div>
                                         </div>
                                       </div>
@@ -1055,73 +1117,7 @@ export default function ProviderDashboard() {
                             )}
                           </CardContent>
                         </Card>
-
-                        {/* Recent Requests */}
-                        <Card>
-                          <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                              <MessageCircle className="w-5 h-5" />
-                              Solicitações Recentes
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            {requestsLoading ? (
-                              <div className="space-y-3">
-                                {[...Array(3)].map((_, i) => (
-                                  <div key={i} className="animate-pulse">
-                                    <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                                    <div className="h-3 bg-gray-200 rounded"></div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : Array.isArray(requests) && requests.length > 0 ? (
-                              <div className="space-y-3">
-                                {requests.slice(0, 3).map((request) => (
-                                  <div key={request.id} className="border border-gray-200 rounded-lg p-3">
-                                    <div className="flex justify-between items-start mb-2">
-                                      <div>
-                                        <p className="font-medium text-gray-900 text-sm">{request.client.name}</p>
-                                        <p className="text-gray-600 text-xs">{request.title}</p>
-                                      </div>
-                                      {getStatusBadge(getEffectiveRequestStatus(request))}
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-xs text-gray-500">
-                                        {new Date(request.createdAt).toLocaleDateString('pt-BR')}
-                                      </span>
-                                      {request.status === 'pending' && (
-                                        <div className="flex gap-1">
-                                          <Button 
-                                            size="sm" 
-                                            variant="outline"
-                                            onClick={() => handleUpdateRequestStatus(request.id, 'accepted')}
-                                            className="text-xs px-2 py-1 h-auto"
-                                          >
-                                            Aceitar
-                                          </Button>
-                                          <Button 
-                                            size="sm" 
-                                            variant="outline"
-                                            onClick={() => handleUpdateRequestStatus(request.id, 'cancelled')}
-                                            className="text-xs px-2 py-1 h-auto text-red-600 hover:text-red-700"
-                                          >
-                                            Recusar
-                                          </Button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-gray-500 text-sm">Nenhuma solicitação ainda</p>
-                            )}
-                          </CardContent>
-                        </Card>
-
-                        
-
-                        
+                        </div>
                       </div>
                     </TabsContent>
 
@@ -1146,12 +1142,6 @@ export default function ProviderDashboard() {
                           ) : Array.isArray(requests) && requests.length > 0 ? (
                             <div className="space-y-4">
                               {requests.map((request) => {
-                                // Validação adicional para garantir que esta é uma solicitação para o prestador atual
-                                if (request.providerId !== provider?.id) {
-                                  console.warn(`Request ${request.id} has providerId ${request.providerId}, but current provider is ${provider?.id}`);
-                                  return null;
-                                }
-                                
                                 return (
                                   <div key={request.id} className="border border-gray-200 rounded-lg p-4">
                                     <div className="flex justify-between items-start mb-3">
@@ -1499,7 +1489,7 @@ export default function ProviderDashboard() {
                                       <div className="flex gap-2">
                                         <Button 
                                           size="sm"
-                                          onClick={() => handleUpdateRequestStatus(request.id, 'accepted')}
+                                          onClick={() => handleUpdateRequestStatus(request.id, 'payment_pending')}
                                           className="bg-green-600 hover:bg-green-700"
                                         >
                                           Aceitar
@@ -1887,7 +1877,10 @@ export default function ProviderDashboard() {
                               <Star className="w-8 h-8 text-yellow-500 mr-3" />
                               <div>
                                 <p className="text-2xl font-bold text-gray-900">
-                                  {provider.averageRating > 0 ? provider.averageRating.toFixed(1) : "N/A"}
+                                  {(() => {
+                                    const correctedRating = getCorrectRatingForProvider(provider);
+                                    return correctedRating.averageRating > 0 ? correctedRating.averageRating.toFixed(1) : "N/A";
+                                  })()}
                                 </p>
                                 <p className="text-sm text-gray-600">Avaliação Média</p>
                               </div>

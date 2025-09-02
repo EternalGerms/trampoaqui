@@ -6,6 +6,7 @@ import {
   reviews, 
   messages,
   negotiations,
+  withdrawals,
   type User, 
   type InsertUser,
   type ServiceCategory,
@@ -19,7 +20,9 @@ import {
   type Message,
   type InsertMessage,
   type Negotiation,
-  type InsertNegotiation
+  type InsertNegotiation,
+  type Withdrawal,
+  type InsertWithdrawal
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, avg, count, or, gte, lte } from "drizzle-orm";
@@ -72,6 +75,12 @@ export interface IStorage {
   // Review operations
   getReviewsByProvider(providerId: string): Promise<(Review & { reviewer: User })[]>;
   getReviewsByProviderUser(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
+  getReviewsByServiceProvider(serviceProviderId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
+  getReviewsByUserReceived(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
+  getReviewsByUserSent(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
+  getReviewsByUserAsClientReceived(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
+  getReviewsByUserAsClientSent(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
+  getReviewsByUserAsProviderReceived(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
   createReview(review: InsertReview): Promise<Review>;
   
   // Message operations
@@ -86,6 +95,21 @@ export interface IStorage {
   updateNegotiationStatus(negotiationId: string, status: 'accepted' | 'rejected' | 'counter_proposed'): Promise<void>;
   getNegotiationById(negotiationId: string): Promise<Negotiation | undefined>;
   getNegotiationsByRequest(requestId: string): Promise<(Negotiation & { proposer: User })[]>;
+
+  // Payment operations
+  updateServiceRequestPayment(requestId: string, paymentMethod: string): Promise<ServiceRequest>;
+  completeServiceRequestPayment(requestId: string): Promise<ServiceRequest>;
+
+  // Balance operations
+  getUserBalance(userId: string): Promise<number>;
+  updateUserBalance(userId: string, amount: number): Promise<User>;
+  addToUserBalance(userId: string, amount: number): Promise<User>;
+  subtractFromUserBalance(userId: string, amount: number): Promise<User>;
+
+  // Withdrawal operations
+  createWithdrawal(withdrawal: InsertWithdrawal): Promise<Withdrawal>;
+  getWithdrawalsByUser(userId: string): Promise<Withdrawal[]>;
+  updateWithdrawalStatus(withdrawalId: string, status: 'pending' | 'completed' | 'cancelled'): Promise<Withdrawal>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -529,6 +553,147 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async getReviewsByServiceProvider(serviceProviderId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]> {
+    const results = await db
+      .select()
+      .from(reviews)
+      .innerJoin(users, eq(reviews.reviewerId, users.id))
+      .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
+      .innerJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
+      .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
+      .where(eq(serviceRequests.providerId, serviceProviderId))
+      .orderBy(desc(reviews.createdAt));
+
+    return results.map(r => ({
+      ...r.reviews,
+      reviewer: r.users,
+      serviceRequest: {
+        ...r.service_requests,
+        category: r.service_categories,
+      }
+    }));
+  }
+
+  async getReviewsByUserReceived(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]> {
+    const results = await db
+      .select()
+      .from(reviews)
+      .innerJoin(users, eq(reviews.reviewerId, users.id))
+      .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
+      .innerJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
+      .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
+      .where(eq(reviews.revieweeId, userId))
+      .orderBy(desc(reviews.createdAt));
+
+    return results.map(r => ({
+      ...r.reviews,
+      reviewer: r.users,
+      serviceRequest: {
+        ...r.service_requests,
+        category: r.service_categories,
+      }
+    }));
+  }
+
+  async getReviewsByUserSent(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]> {
+    const results = await db
+      .select()
+      .from(reviews)
+      .innerJoin(users, eq(reviews.reviewerId, users.id))
+      .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
+      .innerJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
+      .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
+      .where(eq(reviews.reviewerId, userId))
+      .orderBy(desc(reviews.createdAt));
+
+    return results.map(r => ({
+      ...r.reviews,
+      reviewer: r.users,
+      serviceRequest: {
+        ...r.service_requests,
+        category: r.service_categories,
+      }
+    }));
+  }
+
+  async getReviewsByUserAsClientReceived(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]> {
+    const results = await db
+      .select()
+      .from(reviews)
+      .innerJoin(users, eq(reviews.reviewerId, users.id))
+      .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
+      .innerJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
+      .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
+      .where(
+        and(
+          eq(reviews.revieweeId, userId), // User was reviewed
+          eq(serviceRequests.clientId, userId) // User was the client in the request
+        )
+      )
+      .orderBy(desc(reviews.createdAt));
+
+    return results.map(r => ({
+      ...r.reviews,
+      reviewer: r.users,
+      serviceRequest: {
+        ...r.service_requests,
+        category: r.service_categories,
+      }
+    }));
+  }
+
+  async getReviewsByUserAsClientSent(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]> {
+    const results = await db
+      .select()
+      .from(reviews)
+      .innerJoin(users, eq(reviews.reviewerId, users.id))
+      .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
+      .innerJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
+      .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
+      .where(
+        and(
+          eq(reviews.reviewerId, userId), // User made the review
+          eq(serviceRequests.clientId, userId) // User was the client in the request
+        )
+      )
+      .orderBy(desc(reviews.createdAt));
+
+    return results.map(r => ({
+      ...r.reviews,
+      reviewer: r.users,
+      serviceRequest: {
+        ...r.service_requests,
+        category: r.service_categories,
+      }
+    }));
+  }
+
+  async getReviewsByUserAsProviderReceived(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]> {
+    const results = await db
+      .select()
+      .from(reviews)
+      .innerJoin(users, eq(reviews.reviewerId, users.id))
+      .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
+      .innerJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
+      .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
+      .where(
+        and(
+          eq(reviews.revieweeId, userId), // User was reviewed
+          eq(serviceProviders.userId, userId) // User was the provider in the request
+        )
+      )
+      .orderBy(desc(reviews.createdAt));
+
+    return results.map(r => ({
+      ...r.reviews,
+      reviewer: r.users,
+      serviceRequest: {
+        ...r.service_requests,
+        category: r.service_categories,
+      }
+    }));
+  }
+
   async createReview(review: InsertReview): Promise<Review> {
     const [newReview] = await db
       .insert(reviews)
@@ -621,6 +786,81 @@ export class DatabaseStorage implements IStorage {
       ...row.negotiation,
       proposer: row.proposer!,
     }));
+  }
+
+  // Payment operations
+  async updateServiceRequestPayment(requestId: string, paymentMethod: string): Promise<ServiceRequest> {
+    const [result] = await db
+      .update(serviceRequests)
+      .set({ 
+        paymentMethod,
+        status: 'payment_pending'
+      })
+      .where(eq(serviceRequests.id, requestId))
+      .returning();
+    return result;
+  }
+
+  async completeServiceRequestPayment(requestId: string): Promise<ServiceRequest> {
+    const [result] = await db
+      .update(serviceRequests)
+      .set({ 
+        paymentCompletedAt: new Date(),
+        status: 'accepted'
+      })
+      .where(eq(serviceRequests.id, requestId))
+      .returning();
+    return result;
+  }
+
+  // Balance operations
+  async getUserBalance(userId: string): Promise<number> {
+    const [user] = await db.select({ balance: users.balance }).from(users).where(eq(users.id, userId));
+    return parseFloat(user?.balance || '0');
+  }
+
+  async updateUserBalance(userId: string, amount: number): Promise<User> {
+    const [result] = await db
+      .update(users)
+      .set({ balance: amount.toString() })
+      .where(eq(users.id, userId))
+      .returning();
+    return result;
+  }
+
+  async addToUserBalance(userId: string, amount: number): Promise<User> {
+    const currentBalance = await this.getUserBalance(userId);
+    const newBalance = currentBalance + amount;
+    return this.updateUserBalance(userId, newBalance);
+  }
+
+  async subtractFromUserBalance(userId: string, amount: number): Promise<User> {
+    const currentBalance = await this.getUserBalance(userId);
+    const newBalance = Math.max(0, currentBalance - amount);
+    return this.updateUserBalance(userId, newBalance);
+  }
+
+  // Withdrawal operations
+  async createWithdrawal(withdrawal: InsertWithdrawal): Promise<Withdrawal> {
+    const [result] = await db.insert(withdrawals).values(withdrawal).returning();
+    return result;
+  }
+
+  async getWithdrawalsByUser(userId: string): Promise<Withdrawal[]> {
+    return await db
+      .select()
+      .from(withdrawals)
+      .where(eq(withdrawals.userId, userId))
+      .orderBy(desc(withdrawals.createdAt));
+  }
+
+  async updateWithdrawalStatus(withdrawalId: string, status: 'pending' | 'completed' | 'cancelled'): Promise<Withdrawal> {
+    const [result] = await db
+      .update(withdrawals)
+      .set({ status })
+      .where(eq(withdrawals.id, withdrawalId))
+      .returning();
+    return result;
   }
 }
 

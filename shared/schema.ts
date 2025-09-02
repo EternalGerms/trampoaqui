@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   cpf: text("cpf").notNull().unique(),
   birthDate: timestamp("birth_date").notNull(),
   isProviderEnabled: boolean("is_provider_enabled").default(false).notNull(),
+  isAdmin: boolean("is_admin").default(false).notNull(),
   // Provider profile fields
   bio: text("bio"), // About me section
   experience: text("experience"), // Professional experience
@@ -26,6 +27,8 @@ export const users = pgTable("users", {
   number: text("number"),
   hasNumber: boolean("has_number").default(true),
   complement: text("complement"),
+  // Balance field for providers
+  balance: decimal("balance", { precision: 10, scale: 2 }).default('0.00').notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -58,7 +61,7 @@ export const serviceRequests = pgTable("service_requests", {
   providerId: varchar("provider_id").notNull().references(() => serviceProviders.id),
   title: text("title").notNull(),
   description: text("description").notNull(),
-  status: text("status").notNull().default('pending'), // 'pending', 'negotiating', 'accepted', 'completed', 'cancelled'
+  status: text("status").notNull().default('pending'), // 'pending', 'negotiating', 'accepted', 'payment_pending', 'completed', 'cancelled'
   pricingType: text("pricing_type").notNull(), // 'hourly', 'daily', 'fixed'
   proposedPrice: decimal("proposed_price", { precision: 10, scale: 2 }),
   proposedHours: integer("proposed_hours"), // Para serviços por hora
@@ -67,6 +70,8 @@ export const serviceRequests = pgTable("service_requests", {
   negotiationHistory: jsonb("negotiation_history").default([]), // Array de contra-propostas
   clientCompletedAt: timestamp("client_completed_at"), // Quando o cliente marcou como concluído
   providerCompletedAt: timestamp("provider_completed_at"), // Quando o prestador marcou como concluído
+  paymentMethod: text("payment_method"), // 'boleto', 'pix', 'credit_card'
+  paymentCompletedAt: timestamp("payment_completed_at"), // Quando o pagamento foi realizado
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -105,6 +110,14 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const withdrawals = pgTable("withdrawals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  status: text("status").notNull().default('pending'), // 'pending', 'completed', 'cancelled'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   serviceProvider: many(serviceProviders),
@@ -113,6 +126,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   receivedMessages: many(messages, { relationName: "receivedMessages" }),
   givenReviews: many(reviews, { relationName: "givenReviews" }),
   receivedReviews: many(reviews, { relationName: "receivedReviews" }),
+  withdrawals: many(withdrawals),
 }));
 
 export const serviceCategoriesRelations = relations(serviceCategories, ({ many }) => ({
@@ -188,6 +202,13 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   request: one(serviceRequests, {
     fields: [messages.requestId],
     references: [serviceRequests.id],
+  }),
+}));
+
+export const withdrawalsRelations = relations(withdrawals, ({ one }) => ({
+  user: one(users, {
+    fields: [withdrawals.userId],
+    references: [users.id],
   }),
 }));
 
@@ -342,6 +363,13 @@ export const updateServiceRequestSchema = insertServiceRequestSchema.partial().e
     }
     return val;
   }),
+  paymentMethod: z.enum(['boleto', 'pix', 'credit_card']).optional(),
+  paymentCompletedAt: z.union([z.date(), z.string()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return new Date(val);
+    }
+    return val;
+  }),
 });
 
 export const insertReviewSchema = createInsertSchema(reviews).omit({
@@ -361,6 +389,18 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
   createdAt: true,
 });
 
+export const insertWithdrawalSchema = createInsertSchema(withdrawals).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  amount: z.union([z.string(), z.number()]).transform((val) => {
+    if (typeof val === 'string') {
+      return val;
+    }
+    return val?.toString();
+  }),
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -376,6 +416,8 @@ export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Negotiation = typeof negotiations.$inferSelect;
 export type InsertNegotiation = z.infer<typeof insertNegotiationSchema>;
+export type Withdrawal = typeof withdrawals.$inferSelect;
+export type InsertWithdrawal = z.infer<typeof insertWithdrawalSchema>;
 
 // Extended types for requests with related data
 export type RequestWithClient = ServiceRequest & {
