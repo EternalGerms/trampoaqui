@@ -32,7 +32,9 @@ import {
   DollarSign,
   Briefcase,
   Check,
-  X
+  X,
+  BarChart,
+  PieChart
 } from "lucide-react";
 import { authManager, authenticatedRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -45,10 +47,43 @@ import {
   insertServiceProviderSchema 
 } from "@shared/schema";
 
+// Lista dos estados brasileiros
+const BRAZILIAN_STATES = [
+  { value: "AC", label: "Acre" },
+  { value: "AL", label: "Alagoas" },
+  { value: "AP", label: "Amapá" },
+  { value: "AM", label: "Amazonas" },
+  { value: "BA", label: "Bahia" },
+  { value: "CE", label: "Ceará" },
+  { value: "DF", label: "Distrito Federal" },
+  { value: "ES", label: "Espírito Santo" },
+  { value: "GO", label: "Goiás" },
+  { value: "MA", label: "Maranhão" },
+  { value: "MT", label: "Mato Grosso" },
+  { value: "MS", label: "Mato Grosso do Sul" },
+  { value: "MG", label: "Minas Gerais" },
+  { value: "PA", label: "Pará" },
+  { value: "PB", label: "Paraíba" },
+  { value: "PR", label: "Paraná" },
+  { value: "PE", label: "Pernambuco" },
+  { value: "PI", label: "Piauí" },
+  { value: "RJ", label: "Rio de Janeiro" },
+  { value: "RN", label: "Rio Grande do Norte" },
+  { value: "RS", label: "Rio Grande do Sul" },
+  { value: "RO", label: "Rondônia" },
+  { value: "RR", label: "Roraima" },
+  { value: "SC", label: "Santa Catarina" },
+  { value: "SP", label: "São Paulo" },
+  { value: "SE", label: "Sergipe" },
+  { value: "TO", label: "Tocantins" }
+];
+
 const updateProviderSchema = z.object({
   bio: z.string().optional(),
   experience: z.string().min(10, "Experiência deve ter pelo menos 10 caracteres"),
-  location: z.string().min(3, "Localização deve ter pelo menos 3 caracteres"),
+  city: z.string().min(2, "Cidade deve ter pelo menos 2 caracteres"),
+  state: z.string().min(2, "Estado é obrigatório"),
+  location: z.string().optional(), // Campo para compatibilidade com o backend
 });
 
 const newServiceSchema = z.object({
@@ -301,7 +336,8 @@ export default function ProviderDashboard() {
     defaultValues: {
       bio: provider?.user?.bio || "",
       experience: provider?.experience || "",
-      location: provider?.location || (provider?.user?.city && provider?.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
+      city: provider?.user?.city || "",
+      state: provider?.user?.state || "",
     },
   });
 
@@ -346,7 +382,8 @@ export default function ProviderDashboard() {
       form.reset({
         bio: provider.user?.bio || "",
         experience: provider.experience || "",
-        location: provider.location || (provider.user?.city && provider.user?.state ? `${provider.user.city} - ${provider.user.state}` : ""),
+        city: provider.user?.city || "",
+        state: provider.user?.state || "",
       });
     }
   }, [provider, form]);
@@ -648,7 +685,7 @@ export default function ProviderDashboard() {
 
   const handleUpdateProvider = async (data: UpdateProviderForm) => {
     // Validar cidade e estado antes de prosseguir
-    const isCityStateValid = await validateCityState(data.location);
+    const isCityStateValid = await validateCityState(`${data.city} - ${data.state}`);
     if (!isCityStateValid) {
       toast({
         title: "Localização inválida",
@@ -658,7 +695,13 @@ export default function ProviderDashboard() {
       return;
     }
     
-    updateProviderMutation.mutate(data);
+    // Converter os dados para o formato esperado pelo backend
+    const updateData = {
+      ...data,
+      location: `${data.city} - ${data.state}`
+    };
+    
+    updateProviderMutation.mutate(updateData);
   };
 
   const handleCreateNewService = (data: NewServiceForm) => {
@@ -778,7 +821,12 @@ export default function ProviderDashboard() {
   const monthlyEarnings = Array.isArray(requests) 
     ? requests
         .filter(r => r.status === 'completed' && r.proposedPrice)
-        .reduce((sum, r) => sum + parseFloat(r.proposedPrice || "0"), 0)
+        .reduce((sum, r) => {
+          const serviceAmount = parseFloat(r.proposedPrice || "0");
+          const platformFee = serviceAmount * 0.05; // 5% platform fee
+          const providerAmount = serviceAmount - platformFee;
+          return sum + providerAmount;
+        }, 0)
     : 0;
 
   // Function to calculate correct ratings for a service provider, excluding their own reviews
@@ -931,7 +979,7 @@ export default function ProviderDashboard() {
                     <TabsList className="grid w-full grid-cols-4">
                       <TabsTrigger value="overview">Visão Geral</TabsTrigger>
                       <TabsTrigger value="requests">Solicitações</TabsTrigger>
-                      <TabsTrigger value="profile">Perfil</TabsTrigger>
+                      <TabsTrigger value="profile">Editar Perfil</TabsTrigger>
                       <TabsTrigger value="analytics">Relatórios</TabsTrigger>
                     </TabsList>
 
@@ -1805,22 +1853,46 @@ export default function ProviderDashboard() {
                                 )}
                               />
 
-                              <FormField
-                                control={form.control}
-                                name="location"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Localidade</FormLabel>
-                                    <FormControl>
-                                      <Input placeholder="Cidade, bairro ou região onde você atende" {...field} />
-                                    </FormControl>
-                                    <FormMessage />
-                                    <p className="text-sm text-gray-500">
-                                      Formato recomendado: Cidade - Estado (ex: São Paulo - SP)
-                                    </p>
-                                  </FormItem>
-                                )}
-                              />
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <FormField
+                                  control={form.control}
+                                  name="state"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Estado</FormLabel>
+                                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl>
+                                          <SelectTrigger>
+                                            <SelectValue placeholder="Selecione o estado" />
+                                          </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                          {BRAZILIAN_STATES.map((state) => (
+                                            <SelectItem key={state.value} value={state.value}>
+                                              {state.label} ({state.value})
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+
+                                <FormField
+                                  control={form.control}
+                                  name="city"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Cidade</FormLabel>
+                                      <FormControl>
+                                        <Input placeholder="Digite sua cidade" {...field} />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
 
                               <div className="flex gap-4">
                                 <Button 
@@ -1846,6 +1918,7 @@ export default function ProviderDashboard() {
                     </TabsContent>
 
                     <TabsContent value="analytics">
+                      {/* Cards de Estatísticas Principais */}
                       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                         <Card>
                           <CardContent className="p-6">
@@ -1901,37 +1974,139 @@ export default function ProviderDashboard() {
                         </Card>
                       </div>
 
+                      {/* Seção de Análise Financeira */}
+                      <div className="grid md:grid-cols-2 gap-6 mb-6">
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                              <DollarSign className="w-5 h-5" />
+                              Análise Financeira
+                            </CardTitle>
+                            <CardDescription>
+                              Resumo dos seus ganhos e taxas
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-4">
+                              <div className="flex justify-between items-center py-2 border-b">
+                                <span className="text-gray-600">Ganhos Líquidos (Este Mês)</span>
+                                <span className="font-semibold text-green-600">R$ {monthlyEarnings.toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between items-center py-2 border-b">
+                                <span className="text-gray-600">Taxa da Plataforma (5%)</span>
+                                <span className="font-semibold text-red-600">
+                                  R$ {Array.isArray(requests) 
+                                    ? requests
+                                        .filter(r => r.status === 'completed' && r.proposedPrice)
+                                        .reduce((sum, r) => {
+                                          const serviceAmount = parseFloat(r.proposedPrice || "0");
+                                          const platformFee = serviceAmount * 0.05;
+                                          return sum + platformFee;
+                                        }, 0).toFixed(2)
+                                    : "0.00"
+                                  }
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center py-2 border-b">
+                                <span className="text-gray-600">Valor Médio por Serviço</span>
+                                <span className="font-semibold">
+                                  R$ {completedServices > 0 ? (monthlyEarnings / completedServices).toFixed(2) : "0.00"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center py-2">
+                                <span className="text-gray-600">Saldo Atual</span>
+                                <span className="font-semibold text-blue-600">
+                                  R$ {provider?.balance ? parseFloat(provider.balance.toString()).toFixed(2) : "0.00"}
+                                </span>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                              <BarChart className="w-5 h-5" />
+                              Performance
+                            </CardTitle>
+                            <CardDescription>
+                              Métricas de desempenho
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-4">
+                              <div className="flex justify-between items-center py-2 border-b">
+                                <span className="text-gray-600">Total de Solicitações</span>
+                                <span className="font-semibold">{Array.isArray(requests) ? requests.length : 0}</span>
+                              </div>
+                              <div className="flex justify-between items-center py-2 border-b">
+                                <span className="text-gray-600">Taxa de Aceitação</span>
+                                <span className="font-semibold">
+                                  {Array.isArray(requests) && requests.length > 0 
+                                    ? `${((requests.filter(r => r.status !== 'cancelled').length / requests.length) * 100).toFixed(1)}%`
+                                    : "N/A"
+                                  }
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center py-2 border-b">
+                                <span className="text-gray-600">Taxa de Conclusão</span>
+                                <span className="font-semibold">
+                                  {Array.isArray(requests) && requests.length > 0 
+                                    ? `${((completedServices / requests.length) * 100).toFixed(1)}%`
+                                    : "N/A"
+                                  }
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center py-2">
+                                <span className="text-gray-600">Total de Avaliações</span>
+                                <span className="font-semibold">
+                                  {(() => {
+                                    const correctedRating = getCorrectRatingForProvider(provider);
+                                    return correctedRating.reviewCount;
+                                  })()}
+                                </span>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      {/* Gráfico de Atividades por Status */}
                       <Card>
                         <CardHeader>
-                          <CardTitle>Resumo de Atividades</CardTitle>
+                          <CardTitle className="flex items-center gap-2">
+                            <PieChart className="w-5 h-5" />
+                            Distribuição de Solicitações
+                          </CardTitle>
                           <CardDescription>
-                            Suas estatísticas de serviços prestados
+                            Status das suas solicitações de serviço
                           </CardDescription>
                         </CardHeader>
                         <CardContent>
-                          <div className="space-y-4">
-                            <div className="flex justify-between items-center py-2 border-b">
-                              <span className="text-gray-600">Total de Solicitações</span>
-                              <span className="font-semibold">{Array.isArray(requests) ? requests.length : 0}</span>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="text-center p-4 bg-green-50 rounded-lg">
+                              <div className="text-2xl font-bold text-green-600">
+                                {Array.isArray(requests) ? requests.filter(r => r.status === 'completed').length : 0}
+                              </div>
+                              <div className="text-sm text-green-700">Concluídos</div>
                             </div>
-                            <div className="flex justify-between items-center py-2 border-b">
-                              <span className="text-gray-600">Taxa de Aceitação</span>
-                              <span className="font-semibold">
-                                {Array.isArray(requests) && requests.length > 0 
-                                  ? `${((requests.filter(r => r.status !== 'cancelled').length / requests.length) * 100).toFixed(1)}%`
-                                  : "N/A"
-                                }
-                              </span>
+                            <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                              <div className="text-2xl font-bold text-yellow-600">
+                                {Array.isArray(requests) ? requests.filter(r => r.status === 'pending').length : 0}
+                              </div>
+                              <div className="text-sm text-yellow-700">Pendentes</div>
                             </div>
-                            <div className="flex justify-between items-center py-2 border-b">
-                              <span className="text-gray-600">Serviços Concluídos</span>
-                              <span className="font-semibold">{completedServices}</span>
+                            <div className="text-center p-4 bg-blue-50 rounded-lg">
+                              <div className="text-2xl font-bold text-blue-600">
+                                {Array.isArray(requests) ? requests.filter(r => r.status === 'accepted').length : 0}
+                              </div>
+                              <div className="text-sm text-blue-700">Aceitos</div>
                             </div>
-                            <div className="flex justify-between items-center py-2">
-                              <span className="text-gray-600">Valor Médio por Serviço</span>
-                              <span className="font-semibold">
-                                R$ {completedServices > 0 ? (monthlyEarnings / completedServices).toFixed(2) : "0.00"}
-                              </span>
+                            <div className="text-center p-4 bg-red-50 rounded-lg">
+                              <div className="text-2xl font-bold text-red-600">
+                                {Array.isArray(requests) ? requests.filter(r => r.status === 'cancelled').length : 0}
+                              </div>
+                              <div className="text-sm text-red-700">Cancelados</div>
                             </div>
                           </div>
                         </CardContent>
