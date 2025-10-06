@@ -17,7 +17,7 @@ if (!JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable is required");
 }
 
-// Extend Request type to include user
+// Estender tipo Request para incluir usuário
 declare global {
   namespace Express {
     interface Request {
@@ -30,7 +30,7 @@ declare global {
   }
 }
 
-// Middleware to authenticate JWT tokens
+// Middleware para autenticar tokens JWT
 const authenticateToken = (req: Request, res: Response, next: Function) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -44,7 +44,7 @@ const authenticateToken = (req: Request, res: Response, next: Function) => {
       return res.status(403).json({ message: 'Invalid token' });
     }
     
-    // Ensure the decoded token has the expected structure
+    // Garantir que o token decodificado tenha a estrutura esperada
     if (decoded && decoded.userId) {
       req.user = {
         userId: decoded.userId,
@@ -58,7 +58,7 @@ const authenticateToken = (req: Request, res: Response, next: Function) => {
   });
 };
 
-// Middleware to authenticate admin users
+// Middleware para autenticar usuários administradores
 const authenticateAdmin = (req: Request, res: Response, next: Function) => {
   if (!req.user || !req.user.isAdmin) {
     return res.status(403).json({ message: 'Admin access required' });
@@ -67,7 +67,7 @@ const authenticateAdmin = (req: Request, res: Response, next: Function) => {
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Seed initial service categories
+  // Semear categorias de serviço iniciais
   const seedCategories = async () => {
     const categories = [
       { name: "Eletricista", icon: "fas fa-bolt", slug: "eletricista" },
@@ -83,17 +83,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         await storage.createServiceCategory(category);
       } catch (error) {
-        // Category might already exist, ignore error
+        // Categoria pode já existir, ignorar erro
       }
     }
   };
 
   await seedCategories();
 
-  // Health check endpoint for Docker
+  // Endpoint de verificação de saúde para Docker
   app.get("/api/health", async (req: Request, res: Response) => {
     try {
-      // Simple database connection test
+      // Teste simples de conexão com banco de dados
       await db.execute(sql`SELECT 1`);
       res.status(200).json({ 
         status: "healthy", 
@@ -110,7 +110,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Profile status endpoint - SIMPLE VERSION
+  // Endpoint de status do perfil - VERSÃO SIMPLES
   app.get("/api/auth/profile/status", authenticateToken, async (req: Request, res: Response) => {
     try {
       const user = await storage.getUser(req.user!.userId);
@@ -141,7 +141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Debug endpoint to check authentication
+  // Endpoint de debug para verificar autenticação
   app.get("/api/debug/auth", authenticateToken, async (req: Request, res: Response) => {
     try {
       const user = await storage.getUser(req.user!.userId);
@@ -163,24 +163,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 
 
-  // Auth routes
+  // Rotas de autenticação
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
       const userData = insertUserSchema.parse(req.body);
       
-      // Check if user already exists by email
+      // Verificar se usuário já existe por email
       const existingUserByEmail = await storage.getUserByEmail(userData.email);
       if (existingUserByEmail) {
         return res.status(400).json({ message: "Email já está em uso" });
       }
       
-      // Check if user already exists by CPF
+      // Verificar se usuário já existe por CPF
       const existingUserByCPF = await storage.getUserByCPF(userData.cpf);
       if (existingUserByCPF) {
         return res.status(400).json({ message: "CPF já está em uso" });
       }
 
-      // Hash password
+      // Criptografar senha
       const hashedPassword = await bcrypt.hash(userData.password, 10);
       
       const user = await storage.createUser({
@@ -188,7 +188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         password: hashedPassword,
       });
 
-      // Generate JWT token
+      // Gerar token JWT
       const token = jwt.sign({ userId: user.id, isProviderEnabled: user.isProviderEnabled, isAdmin: user.isAdmin }, JWT_SECRET);
       
       res.json({ 
@@ -237,7 +237,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get current user
+  // Obter usuário atual
   app.get("/api/auth/me", authenticateToken, async (req: Request, res: Response) => {
     try {
       const user = await storage.getUser(req.user!.userId);
@@ -262,12 +262,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Enable provider capability
+  // Habilitar capacidade de prestador
   app.post("/api/auth/enable-provider", authenticateToken, async (req: Request, res: Response) => {
     try {
       const user = await storage.enableProviderCapability(req.user!.userId);
       
-      // Check if profile is complete and identify missing fields
+      // Verificar se perfil está completo e identificar campos faltantes
       const missingFields = [];
       if (!user.bio) missingFields.push('bio');
       if (!user.experience) missingFields.push('experience');
@@ -275,7 +275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const isProfileComplete = missingFields.length === 0;
       
-      // Generate new token with updated provider status
+      // Gerar novo token com status de prestador atualizado
       const token = jwt.sign({ userId: user.id, isProviderEnabled: user.isProviderEnabled }, JWT_SECRET);
       
       res.json({ 
@@ -327,7 +327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Service categories
+  // Categorias de serviço
   app.get("/api/categories", async (req: Request, res: Response) => {
     try {
       const categories = await storage.getAllServiceCategories();
@@ -337,7 +337,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Service providers
+  // Prestadores de serviço
   app.get("/api/providers", async (req: Request, res: Response) => {
     try {
       const { categoryId } = req.query;

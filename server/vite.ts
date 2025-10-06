@@ -7,7 +7,7 @@ import { type Server } from "http";
 import viteConfig from "../vite.config";
 import { nanoid } from "nanoid";
 
-// HTML escape function to prevent XSS
+// Função de escape HTML para prevenir XSS
 function escapeHtml(unsafe: string): string {
   return unsafe
     .replace(/&/g, "&amp;")
@@ -17,10 +17,10 @@ function escapeHtml(unsafe: string): string {
     .replace(/'/g, "&#039;");
 }
 
-// Simple in-memory rate limiter
+// Rate limiter simples em memória
 const rateLimiter = new Map<string, { count: number; resetTime: number }>();
-const RATE_LIMIT_WINDOW = 60000; // 1 minute
-const RATE_LIMIT_MAX = 100; // 100 requests per minute
+const RATE_LIMIT_WINDOW = 60000; // 1 minuto
+const RATE_LIMIT_MAX = 100; // 100 requisições por minuto
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
@@ -77,16 +77,16 @@ export async function setupVite(app: Express, server: Server) {
 
   app.use(vite.middlewares);
   
-  // Only handle non-API routes with the catch-all
+  // Lidar apenas com rotas não-API com o catch-all
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
     
-    // Skip API routes - let them be handled by the API middleware
+    // Pular rotas da API - deixar serem tratadas pelo middleware da API
     if (url.startsWith("/api")) {
       return next();
     }
 
-    // Rate limiting for file operations
+    // Rate limiting para operações de arquivo
     const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
     if (!checkRateLimit(clientIp)) {
       return res.status(429).json({ message: "Too many requests" });
@@ -100,17 +100,17 @@ export async function setupVite(app: Express, server: Server) {
         "index.html",
       );
 
-      // Sanitize URL to prevent XSS
+      // Sanitizar URL para prevenir XSS
       const sanitizedUrl = url.replace(/[<>"'&]/g, '');
 
-      // always reload the index.html file from disk incase it changes
+      // sempre recarregar o arquivo index.html do disco caso ele mude
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
       template = template.replace(
         `src="/src/main.tsx"`,
         `src="/src/main.tsx?v=${nanoid()}"`,
       );
       const page = await vite.transformIndexHtml(sanitizedUrl, template);
-      // Additional XSS protection: escape any remaining unsafe content
+      // Proteção XSS adicional: escapar qualquer conteúdo inseguro restante
       const safePage = page.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, (match) => {
         return match.includes('src=') ? match : escapeHtml(match);
       });
@@ -133,10 +133,10 @@ export function serveStatic(app: Express) {
 
   app.use(express.static(distPath));
 
-  // fall through to index.html if the file doesn't exist
-  // Only handle non-API routes
+  // redirecionar para index.html se o arquivo não existir
+  // Lidar apenas com rotas não-API
   app.use("*", (req, res, next) => {
-    // Skip API routes - let them be handled by the API middleware
+    // Pular rotas da API - deixar serem tratadas pelo middleware da API
     if (req.originalUrl.startsWith("/api")) {
       return next();
     }
