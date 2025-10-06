@@ -493,21 +493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Service requests
   app.get("/api/requests", authenticateToken, async (req: Request, res: Response) => {
     try {
-      console.log("Client requests route called for user:", req.user!.userId);
-      
-      // Get service requests for the current user as a client with negotiations
       const requests = await storage.getServiceRequestsByClientWithNegotiations(req.user!.userId);
-      
-      console.log("Client requests found:", requests.length);
-      if (requests.length > 0) {
-        console.log("First request structure:", {
-          id: requests[0].id,
-          title: requests[0].title,
-          hasProvider: !!requests[0].provider,
-          providerId: requests[0].providerId,
-          providerData: requests[0].provider
-        });
-      }
       
       res.json(requests);
     } catch (error) {
@@ -518,8 +504,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/requests/provider", authenticateToken, async (req: Request, res: Response) => {
     try {
-      console.log("Provider requests route called for user:", req.user!.userId);
-      
       // First check if user has provider capability enabled
       const user = await storage.getUser(req.user!.userId);
       if (!user?.isProviderEnabled) {
@@ -550,10 +534,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get all service providers for the current user
       const providers = await storage.getServiceProvidersByUserIdWithDetails(req.user!.userId);
-      console.log("Providers found:", providers);
       
       if (!providers || providers.length === 0) {
-        console.log("No provider profiles found for user:", req.user!.userId);
         return res.status(200).json({
           message: "Provider profile not found",
           code: "PROVIDER_PROFILE_NOT_FOUND",
@@ -568,9 +550,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get requests for all providers of this user
       const allRequests = [];
       for (const provider of providers) {
-        console.log("Looking for requests with providerId:", provider.id);
         const providerRequests = await storage.getServiceRequestsByProviderWithNegotiations(provider.id);
-        console.log(`Requests found for provider ${provider.id}:`, providerRequests);
         allRequests.push(...providerRequests);
       }
       
@@ -578,7 +558,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const requests = allRequests.sort((a, b) => 
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
-      console.log("Total requests found:", requests);
       
       res.json({
         message: "Success",
@@ -597,15 +576,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/requests", authenticateToken, async (req: Request, res: Response) => {
     try {
-      console.log("Received request body:", req.body);
-      console.log("User ID:", req.user!.userId);
-      
       const requestData = insertServiceRequestSchema.parse({
         ...req.body,
         clientId: req.user!.userId,
       });
       
-      console.log("Parsed request data:", requestData);
       
       const request = await storage.createServiceRequest(requestData);
       res.json(request);

@@ -53,13 +53,11 @@ const requestSchema = z.object({
 
 const editProviderSchema = insertServiceProviderSchema.omit({ userId: true });
 
-// Função para validar cidade e estado
 const validateCityState = async (location: string): Promise<boolean> => {
   if (!location) return true;
   
-  // Extrair cidade e estado da localização (formato: "Cidade - Estado")
   const parts = location.split(' - ');
-  if (parts.length !== 2) return true; // Se não estiver no formato esperado, permitir
+  if (parts.length !== 2) return true;
   
   const city = parts[0].trim();
   const state = parts[1].trim();
@@ -67,7 +65,6 @@ const validateCityState = async (location: string): Promise<boolean> => {
   if (!city || !state) return true;
   
   try {
-    // Usar a API do IBGE para validar cidade e estado
     const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${state.toUpperCase()}/municipios`);
     const cities = await response.json();
     
@@ -81,8 +78,6 @@ const validateCityState = async (location: string): Promise<boolean> => {
     
     return true;
   } catch (error) {
-    // Se a API falhar, permitir o envio mas mostrar aviso
-    console.warn('Não foi possível validar a cidade/estado:', error);
     return true;
   }
 };
@@ -112,7 +107,7 @@ export default function ProviderProfile() {
   const providerId = params.id;
 
   const user = authManager.getUser();
-  const isClient = !!user; // Any authenticated user can request services
+  const isClient = !!user;
 
   const { data: provider, isLoading } = useQuery<ProviderWithDetails>({
     queryKey: ["/api/providers", providerId],
@@ -136,13 +131,10 @@ export default function ProviderProfile() {
     enabled: !!providerId,
   });
 
-  // Mostrar apenas avaliações sobre este prestador (reviewee === provider.userId)
-  // e realizadas por clientes (reviewer !== provider.userId)
   const filteredReviews = Array.isArray(reviews)
     ? reviews.filter((r) => r.revieweeId === provider?.userId && r.reviewerId !== provider?.userId)
     : [];
 
-  // Function to calculate correct ratings for the provider, excluding their own reviews
   const getCorrectProviderRating = () => {
     if (filteredReviews.length === 0) {
       return { averageRating: 0, reviewCount: 0 };
@@ -161,7 +153,7 @@ export default function ProviderProfile() {
     queryKey: ["/api/categories"],
   });
 
-  const isOwner = user && provider && user.id === provider.userId; // Check if current user owns this service
+  const isOwner = user && provider && user.id === provider.userId;
 
   const form = useForm<RequestForm>({
     resolver: zodResolver(requestSchema),
@@ -177,7 +169,6 @@ export default function ProviderProfile() {
     },
   });
 
-  // Update default pricingType when provider data loads
   useEffect(() => {
     if (Array.isArray(provider?.pricingTypes) && provider.pricingTypes.length > 0) {
       const firstAvailableType = provider.pricingTypes[0];
@@ -213,7 +204,6 @@ export default function ProviderProfile() {
       queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
     },
     onError: (error: any) => {
-      console.error("Error creating request:", error);
       toast({
         title: "Erro ao enviar solicitação",
         description: error.response?.data?.message || error.message || "Tente novamente em alguns instantes.",
@@ -221,8 +211,6 @@ export default function ProviderProfile() {
       });
     },
   });
-
-
 
   const editForm = useForm<EditProviderForm>({
     resolver: zodResolver(editProviderSchema),
@@ -240,7 +228,6 @@ export default function ProviderProfile() {
     },
   });
 
-  // Reset edit form when provider data loads
   useEffect(() => {
     if (provider) {
       editForm.reset({
@@ -307,10 +294,7 @@ export default function ProviderProfile() {
     createRequestMutation.mutate(data);
   };
 
-
-
   const onEditSubmit = async (data: EditProviderForm) => {
-    // Validar cidade e estado antes de prosseguir
     const isCityStateValid = await validateCityState(data.location);
     if (!isCityStateValid) {
       toast({
@@ -324,7 +308,6 @@ export default function ProviderProfile() {
     updateProviderMutation.mutate(data);
   };
 
-  // Verificações condicionais APÓS todos os hooks
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col">
@@ -442,7 +425,7 @@ export default function ProviderProfile() {
               </CardContent>
             </Card>
 
-            {/* Reviews Section (somente avaliações de clientes sobre este prestador) */}
+            {/* Reviews Section */}
             {filteredReviews.length > 0 && (
               <Card className="mt-8">
                 <CardHeader>
@@ -750,8 +733,6 @@ export default function ProviderProfile() {
             </Card>
           </div>
         )}
-
-
 
         {/* Edit Form Modal */}
         {showEditForm && (

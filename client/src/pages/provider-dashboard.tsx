@@ -145,8 +145,6 @@ const validateCityState = async (location: string): Promise<boolean> => {
     
     return true;
   } catch (error) {
-    // Se a API falhar, permitir o envio mas mostrar aviso
-    console.warn('Não foi possível validar a cidade/estado:', error);
     return true;
   }
 };
@@ -267,7 +265,6 @@ export default function ProviderDashboard() {
     },
     refetchOnWindowFocus: true,
     select: (data: any) => {
-      console.log("Raw data from API:", data);
       if (Array.isArray(data)) return data as RequestWithClient[];
       if (data && Array.isArray(data.requests)) return data.requests as RequestWithClient[];
       return [] as RequestWithClient[];
@@ -279,55 +276,12 @@ export default function ProviderDashboard() {
     queryKey: ["/api/requests"],
     enabled: !!user,
     select: (data: any) => {
-      console.log("Raw client requests data from API:", data);
       if (Array.isArray(data)) return data as ClientRequest[];
       if (data && Array.isArray(data.requests)) return data.requests as ClientRequest[];
       return [] as ClientRequest[];
     },
   });
 
-  // Debug: Log the requests data
-  useEffect(() => {
-    console.log("Provider Dashboard - User ID:", user?.id);
-    console.log("Provider Dashboard - User isProviderEnabled:", user?.isProviderEnabled);
-    console.log("Provider Dashboard - Provider data:", provider);
-    console.log("Provider Dashboard - Provider Requests data:", requests);
-    console.log("Provider Dashboard - Client Requests data:", clientRequests);
-    console.log("Provider Dashboard - Provider Requests loading:", requestsLoading);
-    console.log("Provider Dashboard - Client Requests loading:", clientRequestsLoading);
-    console.log("Provider Dashboard - Provider Requests length:", requests?.length);
-    console.log("Provider Dashboard - Client Requests length:", clientRequests?.length);
-    
-    // Log negotiations for each provider request
-    if (requests && requests.length > 0) {
-      requests.forEach((request, index) => {
-        console.log(`Provider Request ${index + 1}:`, {
-          id: request.id,
-          title: request.title,
-          status: request.status,
-          clientId: request.clientId,
-          providerId: request.providerId,
-          client: request.client,
-          negotiations: request.negotiations,
-          negotiationsCount: request.negotiations?.length || 0
-        });
-      });
-    }
-
-    // Log client requests
-    if (Array.isArray(clientRequests) && clientRequests.length > 0) {
-      clientRequests.forEach((request, index) => {
-        console.log(`Client Request ${index + 1}:`, {
-          id: request.id,
-          title: request.title,
-          status: request.status,
-          clientId: request.clientId,
-          providerId: request.providerId,
-          createdAt: request.createdAt
-        });
-      });
-    }
-  }, [requests, requestsLoading, clientRequests, clientRequestsLoading, user, provider]);
 
   
 
