@@ -7,6 +7,38 @@ import { type Server } from "http";
 import viteConfig from "../vite.config";
 import { nanoid } from "nanoid";
 
+// HTML escape function to prevent XSS
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// Simple in-memory rate limiter
+const rateLimiter = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX = 100; // 100 requests per minute
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const clientData = rateLimiter.get(ip);
+  
+  if (!clientData || now > clientData.resetTime) {
+    rateLimiter.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  
+  if (clientData.count >= RATE_LIMIT_MAX) {
+    return false;
+  }
+  
+  clientData.count++;
+  return true;
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const viteLogger = createLogger();
@@ -54,6 +86,12 @@ export async function setupVite(app: Express, server: Server) {
       return next();
     }
 
+    // Rate limiting for file operations
+    const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+    if (!checkRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests" });
+    }
+
     try {
       const clientTemplate = path.resolve(
         __dirname,
@@ -62,14 +100,21 @@ export async function setupVite(app: Express, server: Server) {
         "index.html",
       );
 
+      // Sanitize URL to prevent XSS
+      const sanitizedUrl = url.replace(/[<>"'&]/g, '');
+
       // always reload the index.html file from disk incase it changes
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
       template = template.replace(
         `src="/src/main.tsx"`,
         `src="/src/main.tsx?v=${nanoid()}"`,
       );
-      const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
+      const page = await vite.transformIndexHtml(sanitizedUrl, template);
+      // Additional XSS protection: escape any remaining unsafe content
+      const safePage = page.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, (match) => {
+        return match.includes('src=') ? match : escapeHtml(match);
+      });
+      res.status(200).set({ "Content-Type": "text/html" }).end(safePage);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
       next(e);

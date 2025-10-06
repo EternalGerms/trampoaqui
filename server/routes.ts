@@ -1,5 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
+import { createServer as createHttpsServer } from "https";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { storage } from "./storage";
 import { db } from "./db";
 import { sql, eq, desc, or } from "drizzle-orm";
@@ -8,7 +11,11 @@ import jwt from "jsonwebtoken";
 import { insertUserSchema, insertServiceProviderSchema, insertServiceRequestSchema, updateServiceRequestSchema, insertMessageSchema, insertReviewSchema, insertNegotiationSchema, updateProviderProfileSchema, insertWithdrawalSchema, users, serviceProviders, serviceRequests, serviceCategories } from "@shared/schema";
 import { z } from "zod";
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
+const JWT_SECRET = process.env.JWT_SECRET as string;
+
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required");
+}
 
 // Extend Request type to include user
 declare global {
@@ -1225,6 +1232,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Use HTTPS in production, HTTP in development
+  if (process.env.NODE_ENV === 'production' && process.env.SSL_CERT && process.env.SSL_KEY) {
+    try {
+      const httpsOptions = {
+        key: readFileSync(process.env.SSL_KEY),
+        cert: readFileSync(process.env.SSL_CERT)
+      };
+      const httpsServer = createHttpsServer(httpsOptions, app);
+      return httpsServer;
+    } catch (error) {
+      console.warn('HTTPS setup failed, falling back to HTTP:', error);
+    }
+  }
+  
   const httpServer = createServer(app);
   return httpServer;
 }
