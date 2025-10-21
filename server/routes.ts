@@ -9,7 +9,8 @@ import { sql, eq, desc, or } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { insertUserSchema, insertServiceProviderSchema, insertServiceRequestSchema, updateServiceRequestSchema, insertMessageSchema, insertReviewSchema, insertNegotiationSchema, updateProviderProfileSchema, insertWithdrawalSchema, users, serviceProviders, serviceRequests, serviceCategories } from "@shared/schema";
-import { z } from "zod";
+import { z, ZodError } from "zod";
+import { generateVerificationToken, sendVerificationEmail } from "./utils/email";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
@@ -67,8 +68,18 @@ const authenticateAdmin = (req: Request, res: Response, next: Function) => {
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Semear categorias de serviço iniciais
+  // Semear categorias de serviço iniciais - APENAS SE NECESSÁRIO
   const seedCategories = async () => {
+    // Primeiro, verificar se as categorias já existem
+    const existingCategories = await storage.getAllServiceCategories();
+    
+    // Se já existem categorias, não precisamos semear novamente
+    if (existingCategories.length > 0) {
+      console.log(`ℹ️  Categories already seeded (${existingCategories.length} found), skipping...`);
+      return;
+    }
+
+    console.log('🌱 Seeding initial service categories...');
     const categories = [
       { name: "Eletricista", icon: "fas fa-bolt", slug: "eletricista" },
       { name: "Encanador", icon: "fas fa-wrench", slug: "encanador" },
@@ -82,10 +93,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     for (const category of categories) {
       try {
         await storage.createServiceCategory(category);
+        console.log(`  ✓ Created category: ${category.name}`);
       } catch (error) {
-        // Categoria pode já existir, ignorar erro
+        console.error(`  ✗ Failed to create category ${category.name}:`, error);
       }
     }
+    console.log('✅ Categories seeded successfully');
   };
 
   await seedCategories();
@@ -183,10 +196,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Criptografar senha
       const hashedPassword = await bcrypt.hash(userData.password, 10);
       
+      const emailVerificationToken = generateVerificationToken();
+      const emailVerificationExpires = new Date(Date.now() + 3600000); // 1 hour from now
+
       const user = await storage.createUser({
         ...userData,
         password: hashedPassword,
+        emailVerificationToken,
+        emailVerificationExpires,
       });
+
+      // Enviar e-mail de verificação
+      try {
+        await sendVerificationEmail(user.email, emailVerificationToken);
+      } catch (emailError) {
+        console.error("Failed to send verification email:", emailError);
+        // Opcional: lidar com o erro de envio de e-mail.
+        // Como a verificação é opcional, o registro pode continuar mesmo se o e-mail falhar.
+      }
 
       // Gerar token JWT
       const token = jwt.sign({ userId: user.id, isProviderEnabled: user.isProviderEnabled, isAdmin: user.isAdmin }, JWT_SECRET);
@@ -202,7 +229,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } 
       });
     } catch (error) {
-      res.status(400).json({ message: "Invalid input data" });
+      console.error("Registration error:", error);
+      
+      if (error instanceof ZodError) {
+        console.error("Validation error:", error.flatten());
+        return res.status(400).json({ message: "Invalid input data", details: error.flatten() });
+      }
+      
+      // Capturar erros de banco de dados
+      if (error && typeof error === 'object' && 'code' in error) {
+        console.error("Database error:", error);
+        return res.status(400).json({ message: "Database error occurred" });
+      }
+      
+      // Capturar outros erros
+      console.error("Unexpected error:", error);
+      return res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -237,6 +279,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/auth/verify-email", async (req: Request, res: Response) => {
+    try {
+      const { token } = req.query;
+
+      if (!token || typeof token !== 'string') {
+        return res.status(400).json({ message: "Token de verificação inválido ou ausente" });
+      }
+
+      const user = await storage.getUserByVerificationToken(token);
+
+      if (!user) {
+        return res.status(400).json({ message: "Token de verificação inválido" });
+      }
+
+      if (user.emailVerificationExpires && user.emailVerificationExpires < new Date()) {
+        return res.status(400).json({ message: "Token de verificação expirado" });
+      }
+
+      await storage.updateUser(user.id, {
+        emailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpires: null,
+      });
+
+      // Retornar sucesso
+      return res.status(200).json({ 
+        message: "E-mail verificado com sucesso",
+        verified: true 
+      });
+    } catch (error) {
+      console.error("Erro na verificação de e-mail:", error);
+      res.status(500).json({ message: "Erro interno do servidor" });
+    }
+  });
+
   // Obter usuário atual
   app.get("/api/auth/me", authenticateToken, async (req: Request, res: Response) => {
     try {
@@ -251,6 +328,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: user.name, 
         isProviderEnabled: user.isProviderEnabled,
         isAdmin: user.isAdmin,
+        emailVerified: user.emailVerified,
         bio: user.bio,
         experience: user.experience,
         location: user.location,
@@ -710,7 +788,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      res.json(user);
+      res.json({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        location: user.location,
+        bio: user.bio,
+        experience: user.experience,
+        isProviderEnabled: user.isProviderEnabled,
+        emailVerified: user.emailVerified,
+        createdAt: user.createdAt,
+      });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Server error" });

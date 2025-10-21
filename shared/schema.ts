@@ -14,6 +14,9 @@ export const users = pgTable("users", {
   birthDate: timestamp("birth_date").notNull(),
   isProviderEnabled: boolean("is_provider_enabled").default(false).notNull(),
   isAdmin: boolean("is_admin").default(false).notNull(),
+  emailVerified: boolean("email_verified").default(false).notNull(),
+  emailVerificationToken: text("email_verification_token"),
+  emailVerificationExpires: timestamp("email_verification_expires"),
   // Provider profile fields
   bio: text("bio"), // About me section
   experience: text("experience"), // Professional experience

@@ -15,6 +15,7 @@ export const pool = new Pool({
   connectionTimeoutMillis: 10000, // 10 segundos
   idleTimeoutMillis: 30000, // 30 segundos
 });
+pool.setMaxListeners(20); // Aumenta o limite de listeners para evitar warnings
 
 export const db = drizzle(pool, { schema });
 
@@ -23,18 +24,14 @@ if (!db) {
   throw new Error('Database not initialized');
 }
 
-// Teste de conexão
-pool.on('connect', () => {
-  console.log('✅ Database connected successfully');
-});
-
-pool.on('error', (err) => {
-  console.error('❌ Database connection error:', err);
-});
-
-// Teste inicial de conexão
-pool.query('SELECT 1').then(() => {
-  console.log('✅ Database connection test passed');
-}).catch((err) => {
-  console.error('❌ Database connection test failed:', err);
-});
+// Função para testar a conexão com o banco de dados
+export const testConnection = async () => {
+  try {
+    await pool.query('SELECT 1');
+    console.log('✅ Database connected successfully');
+  } catch (err) {
+    console.error('❌ Database connection failed:', err);
+    // Encerrar o processo se a conexão com o banco de dados falhar na inicialização
+    process.exit(1);
+  }
+};

@@ -32,8 +32,9 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByCPF(cpf: string): Promise<User | undefined>;
+  getUserByVerificationToken(token: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  updateUser(id: string, user: Partial<InsertUser>): Promise<User>;
+  updateUser(id: string, user: Partial<User>): Promise<User>;
   updateUserProfile(userId: string, profile: { bio?: string; experience?: string; location?: string }): Promise<User>;
   enableProviderCapability(userId: string): Promise<User>;
   
@@ -128,15 +129,26 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(insertUser)
-      .returning();
-    return user;
+  async getUserByVerificationToken(token: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.emailVerificationToken, token));
+    return user || undefined;
   }
 
-  async updateUser(id: string, user: Partial<InsertUser>): Promise<User> {
+  async createUser(insertUser: InsertUser): Promise<User> {
+    try {
+      const [user] = await db
+        .insert(users)
+        .values(insertUser)
+        .returning();
+      return user;
+    } catch (error) {
+      console.error("❌ Error creating user in database:", error);
+      // Lançar o erro novamente para que a rota possa capturá-lo e enviar uma resposta 500
+      throw error;
+    }
+  }
+
+  async updateUser(id: string, user: Partial<User>): Promise<User> {
     const [updatedUser] = await db
       .update(users)
       .set(user)

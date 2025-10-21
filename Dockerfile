@@ -1,20 +1,22 @@
 # Multi-stage build para otimização
 # Stage 1: Build dependencies and application
-FROM node:18-alpine AS builder
+FROM node:18-slim AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy only package files first to leverage Docker cache
 COPY package*.json ./
+
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci && npm cache clean --force
+
+# Copy configuration files
 COPY tsconfig.json ./
 COPY vite.config.ts ./
 COPY tailwind.config.ts ./
 COPY postcss.config.js ./
 COPY components.json ./
 COPY drizzle.config.ts ./
-
-# Install all dependencies (including dev dependencies for build)
-RUN npm ci && npm cache clean --force
 
 # Copy source code
 COPY client/ ./client/
@@ -25,16 +27,16 @@ COPY shared/ ./shared/
 RUN npm run build
 
 # Stage 2: Production image
-FROM node:18-alpine AS production
+FROM node:18-slim AS production
 
 WORKDIR /app
 
 # Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+RUN apt-get update && apt-get install -y dumb-init && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
+# Create non-root user using Debian-compatible commands
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 --ingroup nodejs --no-create-home --shell /bin/false nextjs
 
 # Copy built application
 COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist

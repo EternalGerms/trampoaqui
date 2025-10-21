@@ -179,7 +179,7 @@ export default function Profile() {
     }
 
     // Get reviews specific to this service
-    const serviceSpecificReviews = serviceReviews[serviceId] || [];
+    const serviceSpecificReviews = serviceReviews[service.id] || [];
     
     // Filter out reviews from the provider themselves
     const filteredServiceReviews = serviceSpecificReviews.filter(
@@ -731,14 +731,25 @@ export default function Profile() {
                   <CardTitle>Méritos</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-6">
-                    <Award className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-500 text-sm">
-                      Conquistas serão exibidas aqui conforme você atinge marcos importantes.
-                    </p>
-                  </div>
+                  {user.emailVerified ? (
+                    <div className="flex items-center space-x-3 text-green-600">
+                      <CheckCircle className="w-6 h-6" />
+                      <div className="flex flex-col">
+                        <span className="font-semibold">Conta Verificada</span>
+                        <span className="text-sm text-gray-500">O e-mail deste usuário foi verificado.</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6">
+                      <Award className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500 text-sm">
+                        Conquistas serão exibidas aqui conforme você atinge marcos importantes.
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
+
             </div>
           </div>
         </div>
