@@ -9,75 +9,10 @@ import {
   generateVerificationToken,
   sendVerificationEmail,
 } from "server/utils/email";
+import { authenticateToken, authenticateAdmin } from "server/middlewares/auth.middleware";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 const authRouter = Router();
-
-const authenticateToken = (req: Request, res: Response, next: Function) => {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
-
-  if (!token) {
-    return res.status(401).json({ message: "Access token required" });
-  }
-
-  jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
-    if (err) {
-      return res.status(403).json({ message: "Invalid token" });
-    }
-
-    // Garantir que o token decodificado tenha a estrutura esperada
-    if (decoded && decoded.userId) {
-      req.user = {
-        userId: decoded.userId,
-        isProviderEnabled: decoded.isProviderEnabled || false,
-        isAdmin: decoded.isAdmin || false,
-      };
-      next();
-    } else {
-      return res.status(403).json({ message: "Invalid token structure" });
-    }
-  });
-};
-
-// Endpoint de login
-authRouter.post("/login", async (req: Request, res: Response) => {
-  try {
-    const { email, password } = req.body;
-
-    const user = await storage.getUserByEmail(email);
-    if (!user) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-
-    const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        isProviderEnabled: user.isProviderEnabled,
-        isAdmin: user.isAdmin,
-      },
-      JWT_SECRET
-    );
-
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        isProviderEnabled: user.isProviderEnabled,
-        isAdmin: user.isAdmin,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
-  }
-});
 
 // Endpoint de registro
 authRouter.post("/register", async (req: Request, res: Response) => {
@@ -161,52 +96,45 @@ authRouter.post("/register", async (req: Request, res: Response) => {
 });
 
 // Endpoint de verificação de email
-authRouter.get(
-  "/verify-email",
-  async (req: Request, res: Response) => {
-    try {
-      const { token } = req.query;
+authRouter.get("/verify-email", async (req: Request, res: Response) => {
+  try {
+    const { token } = req.query;
 
-      if (!token || typeof token !== "string") {
-        return res
-          .status(400)
-          .json({ message: "Token de verificação inválido ou ausente" });
-      }
-
-      const user = await storage.getUserByVerificationToken(token);
-
-      if (!user) {
-        return res
-          .status(400)
-          .json({ message: "Token de verificação inválido" });
-      }
-
-      if (
-        user.emailVerificationExpires &&
-        user.emailVerificationExpires < new Date()
-      ) {
-        return res
-          .status(400)
-          .json({ message: "Token de verificação expirado" });
-      }
-
-      await storage.updateUser(user.id, {
-        emailVerified: true,
-        emailVerificationToken: null,
-        emailVerificationExpires: null,
-      });
-
-      // Retornar sucesso
-      return res.status(200).json({
-        message: "E-mail verificado com sucesso",
-        verified: true,
-      });
-    } catch (error) {
-      console.error("Erro na verificação de e-mail:", error);
-      res.status(500).json({ message: "Erro interno do servidor" });
+    if (!token || typeof token !== "string") {
+      return res
+        .status(400)
+        .json({ message: "Token de verificação inválido ou ausente" });
     }
+
+    const user = await storage.getUserByVerificationToken(token);
+
+    if (!user) {
+      return res.status(400).json({ message: "Token de verificação inválido" });
+    }
+
+    if (
+      user.emailVerificationExpires &&
+      user.emailVerificationExpires < new Date()
+    ) {
+      return res.status(400).json({ message: "Token de verificação expirado" });
+    }
+
+    await storage.updateUser(user.id, {
+      emailVerified: true,
+      emailVerificationToken: null,
+      emailVerificationExpires: null,
+    });
+
+    // Retornar sucesso
+    return res.status(200).json({
+      message: "E-mail verificado com sucesso",
+      verified: true,
+    });
+  } catch (error) {
+    console.error("Erro na verificação de e-mail:", error);
+    res.status(500).json({ message: "Erro interno do servidor" });
   }
-);
+});
 
 // Eendpoint de informações do usuário
 authRouter.get(
