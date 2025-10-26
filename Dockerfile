@@ -1,6 +1,6 @@
 # Multi-stage build para otimização
 # Stage 1: Build dependencies and application
-FROM node:18-slim AS builder
+FROM node:25.0.0-alpine3.21 AS builder
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ COPY shared/ ./shared/
 RUN npm run build
 
 # Stage 2: Production image
-FROM node:18-slim AS production
+FROM node:25.0.0-alpine3.21 AS production
 
 WORKDIR /app
 
