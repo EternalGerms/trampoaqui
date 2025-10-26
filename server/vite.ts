@@ -114,7 +114,7 @@ export async function setupVite(app: Express, server: Server) {
       const safePage = page.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, (match) => {
         return match.includes('src=') ? match : escapeHtml(match);
       });
-      res.status(200).set({ "Content-Type": "text/html" }).end(safePage);
+      res.status(200).set({ "Content-Type": "application/json" }).end(safePage);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
       next(e);
