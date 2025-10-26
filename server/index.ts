@@ -3,8 +3,11 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { log } from "./vite";
 import { testConnection } from "./db";
+import helmet from "express";
+
 
 const app = express();
+app.disable('x-powered-by');
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
