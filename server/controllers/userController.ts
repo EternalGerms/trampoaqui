@@ -1,0 +1,72 @@
+import type { Express, Request, Response } from "express";
+import { storage } from "../storage";
+import { authenticateToken } from "../middleware/auth";
+import { formatUserResponsePublic } from "../utils/response";
+
+export function registerUserRoutes(app: Express) {
+  // Get profile status
+  app.get("/api/auth/profile/status", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getUser(req.user!.userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const missingFields = [];
+      if (!user.bio) missingFields.push('bio');
+      if (!user.experience) missingFields.push('experience');
+      if (!user.location) missingFields.push('location');
+      
+      const isProfileComplete = missingFields.length === 0;
+      
+      res.json({ 
+        isProfileComplete,
+        missingFields,
+        profile: {
+          bio: user.bio,
+          experience: user.experience,
+          location: user.location
+        },
+        isProviderEnabled: user.isProviderEnabled,
+        redirectToProfile: !isProfileComplete && user.isProviderEnabled
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Debug authentication
+  app.get("/api/debug/auth", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getUser(req.user!.userId);
+      const provider = await storage.getServiceProviderByUserId(req.user!.userId);
+      
+      res.json({ 
+        authenticatedUser: req.user,
+        userFromDB: user,
+        providerProfile: provider,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Unknown error",
+        authenticatedUser: req.user
+      });
+    }
+  });
+
+  // Get user by ID
+  app.get("/api/users/:id", async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json(formatUserResponsePublic(user));
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+}
+

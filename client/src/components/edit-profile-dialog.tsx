@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,39 +14,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { authenticatedRequest, authManager } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { useMutationWithToast } from "@/hooks/useMutationWithToast";
+import { BRAZILIAN_STATES, isValidBrazilianState } from "@/constants/brazilianStates";
 import { MapPin, Lock, Trash2, AlertTriangle } from "lucide-react";
 import type { User } from "@shared/schema";
-
-// Lista dos estados brasileiros
-const BRAZILIAN_STATES = [
-  { value: "AC", label: "Acre" },
-  { value: "AL", label: "Alagoas" },
-  { value: "AP", label: "Amapá" },
-  { value: "AM", label: "Amazonas" },
-  { value: "BA", label: "Bahia" },
-  { value: "CE", label: "Ceará" },
-  { value: "DF", label: "Distrito Federal" },
-  { value: "ES", label: "Espírito Santo" },
-  { value: "GO", label: "Goiás" },
-  { value: "MA", label: "Maranhão" },
-  { value: "MT", label: "Mato Grosso" },
-  { value: "MS", label: "Mato Grosso do Sul" },
-  { value: "MG", label: "Minas Gerais" },
-  { value: "PA", label: "Pará" },
-  { value: "PB", label: "Paraíba" },
-  { value: "PR", label: "Paraná" },
-  { value: "PE", label: "Pernambuco" },
-  { value: "PI", label: "Piauí" },
-  { value: "RJ", label: "Rio de Janeiro" },
-  { value: "RN", label: "Rio Grande do Norte" },
-  { value: "RS", label: "Rio Grande do Sul" },
-  { value: "RO", label: "Rondônia" },
-  { value: "RR", label: "Roraima" },
-  { value: "SC", label: "Santa Catarina" },
-  { value: "SP", label: "São Paulo" },
-  { value: "SE", label: "Sergipe" },
-  { value: "TO", label: "Tocantins" },
-];
 
 // Schema para atualização de perfil
 const updateProfileSchema = z.object({
@@ -59,8 +30,7 @@ const updateProfileSchema = z.object({
   city: z.string().optional(),
   state: z.string().optional().refine((state) => {
     if (!state) return true;
-    const validStates = BRAZILIAN_STATES.map(s => s.value);
-    return validStates.includes(state.toUpperCase());
+    return isValidBrazilianState(state);
   }, "Estado deve ser uma UF válida do Brasil"),
   street: z.string().optional(),
   neighborhood: z.string().optional(),
@@ -238,43 +208,40 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
   };
 
   // Mutation para atualizar perfil
-  const updateProfileMutation = useMutation({
+  const updateProfileMutation = useMutationWithToast({
     mutationFn: async (data: UpdateProfileForm) => {
       const response = await authenticatedRequest('PUT', '/api/auth/profile', data);
       return response.json();
     },
+    successMessage: "Perfil atualizado!",
+    successDescription: "Suas informações foram atualizadas com sucesso.",
+    errorMessage: "Erro ao atualizar perfil",
+    errorDescription: "Tente novamente mais tarde.",
+    invalidateQueries: ["/api/users", "/api/auth/me", "/api/providers"],
+    skipDefaultErrorToast: true, // We handle errors customly
     onSuccess: (updatedUser) => {
-      toast({
-        title: "Perfil atualizado!",
-        description: "Suas informações foram atualizadas com sucesso.",
-      });
       authManager.setAuth(authManager.getToken()!, updatedUser);
-      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users", user.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
       onOpenChange(false);
     },
-    onError: (error: unknown) => {
+    onError: (error: Error) => {
+      // Custom error handling for parsing error messages
       let errorMessage = "Tente novamente mais tarde.";
-      if (error instanceof Error) {
-        // Try to parse error message from response
-        try {
-          const match = error.message.match(/^(\d+):\s*(.+)$/);
-          if (match) {
-            const errorText = match[2];
-            try {
-              const errorJson = JSON.parse(errorText);
-              errorMessage = errorJson.message || errorMessage;
-            } catch {
-              errorMessage = errorText || errorMessage;
-            }
-          } else {
-            errorMessage = error.message || errorMessage;
+      try {
+        const match = error.message.match(/^(\d+):\s*(.+)$/);
+        if (match) {
+          const errorText = match[2];
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.message || errorMessage;
+          } catch {
+            errorMessage = errorText || errorMessage;
           }
-        } catch {
+        } else {
           errorMessage = error.message || errorMessage;
         }
+      } catch {
+        errorMessage = error.message || errorMessage;
       }
       toast({
         title: "Erro ao atualizar perfil",
@@ -285,7 +252,7 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
   });
 
   // Mutation para alterar senha
-  const changePasswordMutation = useMutation({
+  const changePasswordMutation = useMutationWithToast({
     mutationFn: async (data: ChangePasswordForm) => {
       const response = await authenticatedRequest('PUT', '/api/auth/change-password', {
         oldPassword: data.oldPassword,
@@ -294,34 +261,33 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
       });
       return response.json();
     },
+    successMessage: "Senha alterada!",
+    successDescription: "Sua senha foi alterada com sucesso.",
+    errorMessage: "Erro ao alterar senha",
+    errorDescription: "Tente novamente mais tarde.",
+    skipDefaultErrorToast: true, // We handle errors customly
     onSuccess: () => {
-      toast({
-        title: "Senha alterada!",
-        description: "Sua senha foi alterada com sucesso.",
-      });
       passwordForm.reset();
       onOpenChange(false);
     },
-    onError: (error: unknown) => {
+    onError: (error: Error) => {
+      // Custom error handling for parsing error messages
       let errorMessage = "Tente novamente mais tarde.";
-      if (error instanceof Error) {
-        // Try to parse error message from response
-        try {
-          const match = error.message.match(/^(\d+):\s*(.+)$/);
-          if (match) {
-            const errorText = match[2];
-            try {
-              const errorJson = JSON.parse(errorText);
-              errorMessage = errorJson.message || errorMessage;
-            } catch {
-              errorMessage = errorText || errorMessage;
-            }
-          } else {
-            errorMessage = error.message || errorMessage;
+      try {
+        const match = error.message.match(/^(\d+):\s*(.+)$/);
+        if (match) {
+          const errorText = match[2];
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.message || errorMessage;
+          } catch {
+            errorMessage = errorText || errorMessage;
           }
-        } catch {
+        } else {
           errorMessage = error.message || errorMessage;
         }
+      } catch {
+        errorMessage = error.message || errorMessage;
       }
       toast({
         title: "Erro ao alterar senha",
@@ -332,42 +298,41 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
   });
 
   // Mutation para excluir conta
-  const deleteAccountMutation = useMutation({
+  const deleteAccountMutation = useMutationWithToast({
     mutationFn: async (data: DeleteAccountForm) => {
       const response = await authenticatedRequest('DELETE', '/api/auth/account', {
         password: data.password,
       });
       return response.json();
     },
+    successMessage: "Conta excluída",
+    successDescription: "Sua conta foi excluída com sucesso.",
+    errorMessage: "Erro ao excluir conta",
+    errorDescription: "Tente novamente mais tarde.",
+    skipDefaultErrorToast: true, // We handle errors customly
     onSuccess: () => {
-      toast({
-        title: "Conta excluída",
-        description: "Sua conta foi excluída com sucesso.",
-      });
       authManager.logout();
       setLocation('/');
       onOpenChange(false);
     },
-    onError: (error: unknown) => {
+    onError: (error: Error) => {
+      // Custom error handling for parsing error messages
       let errorMessage = "Tente novamente mais tarde.";
-      if (error instanceof Error) {
-        // Try to parse error message from response
-        try {
-          const match = error.message.match(/^(\d+):\s*(.+)$/);
-          if (match) {
-            const errorText = match[2];
-            try {
-              const errorJson = JSON.parse(errorText);
-              errorMessage = errorJson.message || errorMessage;
-            } catch {
-              errorMessage = errorText || errorMessage;
-            }
-          } else {
-            errorMessage = error.message || errorMessage;
+      try {
+        const match = error.message.match(/^(\d+):\s*(.+)$/);
+        if (match) {
+          const errorText = match[2];
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.message || errorMessage;
+          } catch {
+            errorMessage = errorText || errorMessage;
           }
-        } catch {
+        } else {
           errorMessage = error.message || errorMessage;
         }
+      } catch {
+        errorMessage = error.message || errorMessage;
       }
       toast({
         title: "Erro ao excluir conta",

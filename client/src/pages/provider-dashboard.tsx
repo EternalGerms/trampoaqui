@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -35,7 +35,9 @@ import {
 } from "lucide-react";
 import { authManager, authenticatedRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { useMutationWithToast } from "@/hooks/useMutationWithToast";
+import { formatCurrency, formatDate, formatDateTime, formatTime } from "@/utils/format";
+import { BRAZILIAN_STATES } from "@/constants/brazilianStates";
 import ClientReviewDialog from "@/components/client-review-dialog";
 import { 
   ServiceProvider, 
@@ -43,37 +45,6 @@ import {
   ServiceCategory, 
   insertServiceProviderSchema 
 } from "@shared/schema";
-
-// Lista dos estados brasileiros
-const BRAZILIAN_STATES = [
-  { value: "AC", label: "Acre" },
-  { value: "AL", label: "Alagoas" },
-  { value: "AP", label: "Amapá" },
-  { value: "AM", label: "Amazonas" },
-  { value: "BA", label: "Bahia" },
-  { value: "CE", label: "Ceará" },
-  { value: "DF", label: "Distrito Federal" },
-  { value: "ES", label: "Espírito Santo" },
-  { value: "GO", label: "Goiás" },
-  { value: "MA", label: "Maranhão" },
-  { value: "MT", label: "Mato Grosso" },
-  { value: "MS", label: "Mato Grosso do Sul" },
-  { value: "MG", label: "Minas Gerais" },
-  { value: "PA", label: "Pará" },
-  { value: "PB", label: "Paraíba" },
-  { value: "PR", label: "Paraná" },
-  { value: "PE", label: "Pernambuco" },
-  { value: "PI", label: "Piauí" },
-  { value: "RJ", label: "Rio de Janeiro" },
-  { value: "RN", label: "Rio Grande do Norte" },
-  { value: "RS", label: "Rio Grande do Sul" },
-  { value: "RO", label: "Rondônia" },
-  { value: "RR", label: "Roraima" },
-  { value: "SC", label: "Santa Catarina" },
-  { value: "SP", label: "São Paulo" },
-  { value: "SE", label: "Sergipe" },
-  { value: "TO", label: "Tocantins" }
-];
 
 const newServiceSchema = z.object({
   categoryId: z.string().min(1, "Selecione uma categoria"),
@@ -293,7 +264,7 @@ export default function ProviderDashboard() {
     },
   });
 
-  const createNewServiceMutation = useMutation({
+  const createNewServiceMutation = useMutationWithToast({
     mutationFn: async (data: NewServiceForm) => {
       const { city, state, ...serviceData } = data;
       const location = `${city} - ${state}`;
@@ -304,11 +275,12 @@ export default function ProviderDashboard() {
       });
       return response.json();
     },
+    successMessage: "Novo serviço criado!",
+    successDescription: "Seu serviço foi adicionado com sucesso.",
+    errorMessage: "Erro ao criar serviço",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/providers"],
     onSuccess: () => {
-      toast({
-        title: "Novo serviço criado!",
-        description: "Seu serviço foi adicionado com sucesso.",
-      });
       setShowNewServiceForm(false);
       newServiceForm.reset({
         categoryId: "",
@@ -320,39 +292,22 @@ export default function ProviderDashboard() {
         city: provider?.user?.city || "",
         state: provider?.user?.state || "",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao criar serviço",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
     },
   });
 
-  const updateRequestStatusMutation = useMutation({
+  const updateRequestStatusMutation = useMutationWithToast({
     mutationFn: async ({ requestId, status }: { requestId: string; status: string }) => {
       const response = await authenticatedRequest('PUT', `/api/requests/${requestId}`, { status });
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Status atualizado!",
-        description: "O status da solicitação foi alterado.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/requests/provider"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao atualizar status",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    },
+    successMessage: "Status atualizado!",
+    successDescription: "O status da solicitação foi alterado.",
+    errorMessage: "Erro ao atualizar status",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests/provider"],
   });
 
-  const createNegotiationMutation = useMutation({
+  const createNegotiationMutation = useMutationWithToast({
     mutationFn: async (data: {
       requestId: string;
       pricingType: string;
@@ -365,48 +320,32 @@ export default function ProviderDashboard() {
       const response = await authenticatedRequest('POST', '/api/negotiations', data);
       return response.json();
     },
+    successMessage: "Contra-proposta enviada!",
+    successDescription: "O cliente foi notificado sobre sua proposta.",
+    errorMessage: "Erro ao enviar contra-proposta",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests/provider"],
     onSuccess: () => {
-      toast({
-        title: "Contra-proposta enviada!",
-        description: "O cliente foi notificado sobre sua proposta.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/requests/provider"] });
       setCounterProposalRequestId(null);
       setOriginalRequestData(null);
       counterProposalForm.reset();
     },
-    onError: () => {
-      toast({
-        title: "Erro ao enviar contra-proposta",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    },
   });
 
-  const updateNegotiationStatusMutation = useMutation({
+  const updateNegotiationStatusMutation = useMutationWithToast({
     mutationFn: async ({ negotiationId, status }: { negotiationId: string; status: 'accepted' | 'rejected' }) => {
       const response = await authenticatedRequest('PUT', `/api/negotiations/${negotiationId}/status`, { status });
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Status da negociação atualizado!",
-        description: "O status foi alterado com sucesso.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/requests/provider"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao atualizar status",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    },
+    successMessage: "Status da negociação atualizado!",
+    successDescription: "O status foi alterado com sucesso.",
+    errorMessage: "Erro ao atualizar status",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests/provider"],
   });
 
   // Create review mutation
-  const createReviewMutation = useMutation({
+  const createReviewMutation = useMutationWithToast({
     mutationFn: async (data: ReviewForm) => {
       const payload = {
         requestId: reviewRequestId,
@@ -418,22 +357,15 @@ export default function ProviderDashboard() {
       const response = await authenticatedRequest('POST', '/api/reviews', payload);
       return response.json();
     },
+    successMessage: "Avaliação enviada!",
+    successDescription: "Sua avaliação foi registrada com sucesso.",
+    errorMessage: "Erro ao enviar avaliação",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests/provider"],
     onSuccess: () => {
-      toast({
-        title: "Avaliação enviada!",
-        description: "Sua avaliação foi registrada com sucesso.",
-      });
       setReviewRequestId(null);
       setRevieweeId(null);
       reviewForm.reset();
-      queryClient.invalidateQueries({ queryKey: ["/api/requests/provider"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao enviar avaliação",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
     },
   });
 
@@ -605,16 +537,6 @@ export default function ProviderDashboard() {
     return false;
   };
 
-  const formatDateTime = (dateInput: string | Date) => {
-    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-    return date.toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
   const handleCounterProposal = (data: CounterProposalForm) => {
     if (!counterProposalRequestId || !originalRequestData) return;
@@ -790,7 +712,7 @@ export default function ProviderDashboard() {
                           </div>
                           <p className="text-gray-600 text-sm mb-2">{request.description}</p>
                           <div className="flex justify-between items-center text-xs text-gray-500">
-                            <span>Solicitado em: {new Date(request.createdAt).toLocaleDateString('pt-BR')}</span>
+                            <span>Solicitado em: {formatDate(request.createdAt)}</span>
                             {request.proposedPrice && (
                               <span className="text-green-600 font-medium">R$ {request.proposedPrice}</span>
                             )}
@@ -1075,7 +997,7 @@ export default function ProviderDashboard() {
                                           <div>
                                             <p className="text-xs text-gray-500 font-medium">Valor Final</p>
                                             <p className="text-sm font-medium text-green-600">
-                                              R$ {parseFloat(request.proposedPrice.toString()).toFixed(2).replace('.', ',')}
+                                              {formatCurrency(request.proposedPrice)}
                                               {request.pricingType === 'hourly' && request.proposedHours && (
                                                 <span className="text-xs text-gray-500 ml-1">
                                                   ({request.proposedHours}h)
@@ -1091,7 +1013,7 @@ export default function ProviderDashboard() {
                                           <div>
                                             <p className="text-xs text-gray-500 font-medium">Valor Líquido</p>
                                             <p className="text-sm font-medium text-blue-600">
-                                              R$ {(parseFloat(request.proposedPrice.toString()) * 0.95).toFixed(2).replace('.', ',')}
+                                              {formatCurrency(parseFloat(request.proposedPrice.toString()) * 0.95)}
                                               <span className="text-xs text-gray-500 ml-1 block">
                                                 (taxa 5%)
                                               </span>
@@ -1125,7 +1047,7 @@ export default function ProviderDashboard() {
                                     </div>
                                     
                                     <div className="flex justify-between items-center text-sm text-gray-600 mb-3">
-                                      <span>Solicitado em: {new Date(request.createdAt).toLocaleDateString('pt-BR')}</span>
+                                      <span>Solicitado em: {formatDate(request.createdAt)}</span>
                                     </div>
                                     
                                     {/* Daily Sessions for daily services */}
@@ -1168,7 +1090,6 @@ export default function ProviderDashboard() {
                                           return (
                                             <div className="space-y-2">
                                               {request.dailySessions.map((session, index) => {
-                                                const sessionDate = typeof session.scheduledDate === 'string' ? new Date(session.scheduledDate) : session.scheduledDate;
                                                 return (
                                                   <div key={index} className="bg-white border border-purple-200 rounded p-3">
                                                     <div className="flex items-center justify-between">
@@ -1176,7 +1097,7 @@ export default function ProviderDashboard() {
                                                         <div className="flex items-center gap-2 mb-1">
                                                           <span className="font-medium text-sm">Dia {session.day}</span>
                                                           <span className="text-xs text-gray-500">
-                                                            {sessionDate.toLocaleDateString('pt-BR')} às {session.scheduledTime}
+                                                            {formatDate(session.scheduledDate)} às {session.scheduledTime}
                                                           </span>
                                                         </div>
                                                         <div className="flex items-center gap-4 text-xs text-gray-600">
@@ -1245,7 +1166,7 @@ export default function ProviderDashboard() {
                                                     {negotiation.proposedPrice && (
                                                       <span className="flex items-center gap-1 text-green-600 font-medium">
                                                         <DollarSign className="w-3 h-3" />
-                                                        R$ {parseFloat(negotiation.proposedPrice).toFixed(2).replace('.', ',')}
+                                                        {formatCurrency(negotiation.proposedPrice)}
                                                       </span>
                                                     )}
                                                     {negotiation.proposedHours && (
@@ -1260,7 +1181,7 @@ export default function ProviderDashboard() {
                                                     )}
                                                     {negotiation.proposedDate && (
                                                       <span className="text-gray-600">
-                                                        {new Date(negotiation.proposedDate).toLocaleDateString('pt-BR')}
+                                                        {formatDate(negotiation.proposedDate)}
                                                       </span>
                                                     )}
                                                   </div>
@@ -1503,7 +1424,7 @@ export default function ProviderDashboard() {
                                                 })()}
                                               </div>
                                               <div className="text-xs text-gray-500">
-                                                {new Date(negotiation.createdAt).toLocaleDateString('pt-BR')} às {new Date(negotiation.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                                {formatDate(negotiation.createdAt)} às {formatTime(negotiation.createdAt)}
                                               </div>
                                             </div>
                                           ))}

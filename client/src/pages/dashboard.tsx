@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { authManager } from "@/lib/auth";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useMutationWithToast } from "@/hooks/useMutationWithToast";
+import { formatCurrency, formatDate, formatDateTime } from "@/utils/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -156,56 +158,37 @@ export default function Dashboard() {
 
 
   // Enable provider capability mutation
-  const enableProviderMutation = useMutation({
+  const enableProviderMutation = useMutationWithToast({
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/auth/enable-provider', {});
       return response.json();
     },
+    successMessage: "Recursos de prestador habilitados!",
+    successDescription: "Agora você pode criar seu perfil de prestador de serviços.",
+    errorMessage: "Erro",
+    errorDescription: "Não foi possível habilitar os recursos de prestador.",
+    invalidateQueries: ["/api/auth/me"],
     onSuccess: (data) => {
       // Update local auth state
       authManager.setAuth(data.token, data.user);
-      
-      // Invalidate and refetch user data
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      
-      toast({
-        title: "Recursos de prestador habilitados!",
-        description: "Agora você pode criar seu perfil de prestador de serviços.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Erro",
-        description: "Não foi possível habilitar os recursos de prestador.",
-        variant: "destructive",
-      });
     },
   });
 
   // Accept/Reject negotiation mutation
-  const updateNegotiationStatusMutation = useMutation({
+  const updateNegotiationStatusMutation = useMutationWithToast({
     mutationFn: async ({ negotiationId, status }: { negotiationId: string; status: 'accepted' | 'rejected' }) => {
       const response = await apiRequest('PUT', `/api/negotiations/${negotiationId}/status`, { status });
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Negociação atualizada!",
-        description: "O status da negociação foi alterado com sucesso.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao atualizar negociação",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    },
+    successMessage: "Negociação atualizada!",
+    successDescription: "O status da negociação foi alterado com sucesso.",
+    errorMessage: "Erro ao atualizar negociação",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests"],
   });
 
   // Create counter proposal mutation
-  const createCounterProposalMutation = useMutation({
+  const createCounterProposalMutation = useMutationWithToast({
     mutationFn: async (data: z.infer<typeof counterProposalSchema>) => {
       // Convert date and time fields to proper Date object
       const proposalData = {
@@ -221,66 +204,77 @@ export default function Dashboard() {
       const response = await apiRequest('POST', `/api/negotiations/${counterProposalNegotiationId}/counter-proposal`, proposalData);
       return response.json();
     },
+    successMessage: "Contraproposta enviada!",
+    successDescription: "O prestador foi notificado sobre sua proposta.",
+    errorMessage: "Erro ao enviar contraproposta",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests"],
     onSuccess: () => {
-      toast({
-        title: "Contraproposta enviada!",
-        description: "O prestador foi notificado sobre sua proposta.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
       setCounterProposalRequestId(null);
       setCounterProposalNegotiationId(null);
       setOriginalNegotiationData(null);
       counterProposalForm.reset();
     },
-    onError: () => {
-      toast({
-        title: "Erro ao enviar contraproposta",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    },
   });
 
   // Payment mutations
-  const processPaymentMutation = useMutation({
+  const processPaymentMutation = useMutationWithToast({
     mutationFn: async ({ requestId, paymentMethod }: { requestId: string; paymentMethod: string }) => {
       const response = await apiRequest('POST', `/api/requests/${requestId}/payment`, { paymentMethod });
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Método de pagamento selecionado!",
-        description: "Agora você pode confirmar o pagamento.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao processar pagamento",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    },
+    successMessage: "Método de pagamento selecionado!",
+    successDescription: "Agora você pode confirmar o pagamento.",
+    errorMessage: "Erro ao processar pagamento",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests"],
   });
 
-  const completePaymentMutation = useMutation({
+  const completePaymentMutation = useMutationWithToast({
     mutationFn: async (requestId: string) => {
       const response = await apiRequest('POST', `/api/requests/${requestId}/complete-payment`);
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Pagamento confirmado!",
-        description: "O prestador foi notificado e pode agendar o serviço.",
+    successMessage: "Pagamento confirmado!",
+    successDescription: "O prestador foi notificado e pode agendar o serviço.",
+    errorMessage: "Erro ao confirmar pagamento",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests"],
+  });
+
+  // Complete daily session mutation
+  const completeDailySessionMutation = useMutationWithToast({
+    mutationFn: async ({ requestId, dayIndex }: { requestId: string; dayIndex: number }) => {
+      const response = await apiRequest('PUT', `/api/requests/${requestId}/daily-session/${dayIndex}`, {
+        completed: true
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
+      return response.json();
     },
-    onError: () => {
-      toast({
-        title: "Erro ao confirmar pagamento",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
+    successMessage: "Dia marcado como concluído!",
+    successDescription: "O prestador também precisa confirmar para finalizar este dia.",
+    errorMessage: "Erro",
+    errorDescription: "Não foi possível marcar o dia como concluído.",
+    invalidateQueries: ["/api/requests"],
+  });
+
+  // Update request status mutation
+  const updateRequestStatusMutation = useMutationWithToast({
+    mutationFn: async ({ requestId, status }: { requestId: string; status: string }) => {
+      const response = await apiRequest('PUT', `/api/requests/${requestId}`, { status });
+      return response.json();
+    },
+    successMessage: "Status atualizado!",
+    successDescription: "O status da solicitação foi alterado com sucesso.",
+    errorMessage: "Erro ao atualizar status",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests"],
+    onSuccess: (_, variables) => {
+      if (variables.status === 'completed') {
+        toast({
+          title: "Serviço marcado como concluído!",
+          description: "O prestador será notificado sobre a confirmação de conclusão.",
+        });
+      }
     },
   });
 
@@ -389,30 +383,8 @@ export default function Dashboard() {
   };
 
   // Function to handle request status updates
-  const handleUpdateRequestStatus = async (requestId: string, status: string) => {
-    try {
-      const response = await apiRequest('PUT', `/api/requests/${requestId}`, { status });
-      if (response.ok) {
-        if (status === 'completed') {
-          toast({
-            title: "Serviço marcado como concluído!",
-            description: "O prestador será notificado sobre a confirmação de conclusão.",
-          });
-        } else {
-          toast({
-            title: "Status atualizado!",
-            description: "O status da solicitação foi alterado com sucesso.",
-          });
-        }
-        queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
-      }
-    } catch (error) {
-      toast({
-        title: "Erro ao atualizar status",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    }
+  const handleUpdateRequestStatus = (requestId: string, status: string) => {
+    updateRequestStatusMutation.mutate({ requestId, status });
   };
 
   // Function to open review dialog
@@ -606,7 +578,7 @@ export default function Dashboard() {
                                   </span>
                                   {request.proposedPrice && (
                                     <span className="font-medium text-green-600">
-                                      Valor Final: R$ {parseFloat(request.proposedPrice).toFixed(2).replace('.', ',')}
+                                      Valor Final: {formatCurrency(request.proposedPrice)}
                                       {request.pricingType === 'hourly' && request.proposedHours && (
                                         <span className="text-xs text-gray-500 ml-1">
                                           ({request.proposedHours}h)
@@ -622,12 +594,12 @@ export default function Dashboard() {
                                   {request.scheduledDate && (
                                     <div className="flex items-center gap-1">
                                       <Calendar className="w-4 h-4" />
-                                      {new Date(request.scheduledDate).toLocaleDateString('pt-BR')}
+                                      {formatDate(request.scheduledDate)}
                                     </div>
                                   )}
                                   <div className="flex items-center gap-1">
                                     <Calendar className="w-4 h-4" />
-                                    Criado em {new Date(request.createdAt).toLocaleDateString('pt-BR')}
+                                    Criado em {formatDate(request.createdAt)}
                                   </div>
                                 </div>
 
@@ -655,13 +627,13 @@ export default function Dashboard() {
                                           
                                           {negotiation.proposedPrice && (
                                             <div className="text-sm text-gray-600">
-                                              <strong>Preço proposto:</strong> R$ {parseFloat(negotiation.proposedPrice).toFixed(2).replace('.', ',')}
+                                              <strong>Preço proposto:</strong> {formatCurrency(negotiation.proposedPrice)}
                                             </div>
                                           )}
                                           
                                           {negotiation.proposedDate && (
                                             <div className="text-sm text-gray-600">
-                                              <strong>Data proposta:</strong> {new Date(negotiation.proposedDate).toLocaleDateString('pt-BR')}
+                                              <strong>Data proposta:</strong> {formatDate(negotiation.proposedDate)}
                                             </div>
                                           )}
                                         </div>
@@ -707,7 +679,6 @@ export default function Dashboard() {
                                       return (
                                         <div className="space-y-2">
                                           {request.dailySessions.map((session, index) => {
-                                            const sessionDate = typeof session.scheduledDate === 'string' ? new Date(session.scheduledDate) : session.scheduledDate;
                                             return (
                                               <div key={index} className="bg-white border border-purple-200 rounded p-3">
                                                 <div className="flex items-center justify-between">
@@ -715,7 +686,7 @@ export default function Dashboard() {
                                                     <div className="flex items-center gap-2 mb-1">
                                                       <span className="font-medium text-sm">Dia {session.day}</span>
                                                       <span className="text-xs text-gray-500">
-                                                        {sessionDate.toLocaleDateString('pt-BR')} às {session.scheduledTime}
+                                                        {formatDate(session.scheduledDate)} às {session.scheduledTime}
                                                       </span>
                                                     </div>
                                                     <div className="flex items-center gap-4 text-xs text-gray-600">
@@ -731,27 +702,15 @@ export default function Dashboard() {
                                                     <Button
                                                       size="sm"
                                                       variant="outline"
-                                                      onClick={async () => {
-                                                        try {
-                                                          const response = await apiRequest('PUT', `/api/requests/${request.id}/daily-session/${index}`, {
-                                                            completed: true
-                                                          });
-                                                          await response.json();
-                                                          queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
-                                                          toast({
-                                                            title: "Dia marcado como concluído!",
-                                                            description: "O prestador também precisa confirmar para finalizar este dia.",
-                                                          });
-                                                        } catch (error: any) {
-                                                          toast({
-                                                            title: "Erro",
-                                                            description: error.message || "Não foi possível marcar o dia como concluído.",
-                                                            variant: "destructive",
-                                                          });
-                                                        }
+                                                      onClick={() => {
+                                                        completeDailySessionMutation.mutate({
+                                                          requestId: request.id,
+                                                          dayIndex: index
+                                                        });
                                                       }}
+                                                      disabled={completeDailySessionMutation.isPending}
                                                     >
-                                                      Marcar como Concluído
+                                                      {completeDailySessionMutation.isPending ? "Processando..." : "Marcar como Concluído"}
                                                     </Button>
                                                   )}
                                                 </div>
@@ -826,7 +785,7 @@ export default function Dashboard() {
                                           <AlertDialogDescription>
                                             {checkServiceDate(request) ? (
                                               <>
-                                                Atenção: O serviço está agendado para <strong>{request.scheduledDate ? new Date(request.scheduledDate).toLocaleString('pt-BR') : ''}</strong>. 
+                                                Atenção: O serviço está agendado para <strong>{request.scheduledDate ? formatDateTime(request.scheduledDate) : ''}</strong>. 
                                                 Você está marcando como concluído antes da data/horário agendado. 
                                                 Tem certeza que deseja continuar?
                                               </>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,7 +15,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, User, Star, Heart, Briefcase, DollarSign, Settings } from "lucide-react";
 import { authManager, authenticatedRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMutationWithToast } from "@/hooks/useMutationWithToast";
+import { apiRequest } from "@/lib/queryClient";
 import { updateProviderProfileSchema, insertServiceProviderSchema } from "@shared/schema";
 import type { ServiceCategory } from "@shared/schema";
 import { z } from "zod";
@@ -160,7 +161,7 @@ export default function CompleteProfile() {
     }
   }, [user, form]);
 
-  const createCompleteProfileMutation = useMutation({
+  const createCompleteProfileMutation = useMutationWithToast({
     mutationFn: async (data: ProfileForm) => {
       setIsCreatingProvider(true);
       const location = `${data.city} - ${data.state}`;
@@ -195,24 +196,18 @@ export default function CompleteProfile() {
         setIsCreatingProvider(false);
       }
     },
-    onSuccess: ({ user: updatedUser, provider }) => {
+    successMessage: "Perfil criado com sucesso!",
+    successDescription: "Seu perfil e serviço foram configurados. Bem-vindo ao TrampoAqui!",
+    errorMessage: "Erro ao criar perfil",
+    errorDescription: "Tente novamente mais tarde",
+    invalidateQueries: ["/api/providers", "/api/auth/me"],
+    onSuccess: ({ user: updatedUser }) => {
       // Update local auth state with new profile data
       authManager.setAuth(authManager.getToken()!, updatedUser);
-      
-      toast({
-        title: "Perfil criado com sucesso!",
-        description: "Seu perfil e serviço foram configurados. Bem-vindo ao TrampoAqui!",
-      });
-      
       setLocation('/provider-dashboard');
     },
-    onError: (error) => {
-      console.error('Error creating profile:', error);
-      toast({
-        title: "Erro ao criar perfil",
-        description: error instanceof Error ? error.message : "Tente novamente mais tarde",
-        variant: "destructive",
-      });
+    onError: () => {
+      setIsCreatingProvider(false);
     },
   });
 

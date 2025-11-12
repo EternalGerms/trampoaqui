@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -9,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Star } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { useMutationWithToast } from "@/hooks/useMutationWithToast";
 
 const reviewSchema = z.object({
   rating: z.number().min(1, "Avaliação deve ser de 1 a 5 estrelas").max(5),
@@ -33,8 +32,6 @@ export default function ReviewDialog({
   isOpen, 
   onOpenChange 
 }: ReviewDialogProps) {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [hoveredRating, setHoveredRating] = useState(0);
 
   const form = useForm<ReviewFormData>({
@@ -45,30 +42,24 @@ export default function ReviewDialog({
     },
   });
 
-  const createReviewMutation = useMutation({
+  const createReviewMutation = useMutationWithToast({
     mutationFn: async (data: ReviewFormData) => {
-      return apiRequest("POST", "/api/reviews", {
+      const response = await apiRequest("POST", "/api/reviews", {
         requestId,
         revieweeId: providerId,
         rating: data.rating,
         comment: data.comment || "",
       });
+      return response.json();
     },
+    successMessage: "Avaliação enviada!",
+    successDescription: "Sua avaliação foi registrada com sucesso.",
+    errorMessage: "Erro ao enviar avaliação",
+    errorDescription: "Tente novamente mais tarde.",
+    invalidateQueries: ["/api/requests"],
     onSuccess: () => {
-      toast({
-        title: "Avaliação enviada!",
-        description: "Sua avaliação foi registrada com sucesso.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
       onOpenChange(false);
       form.reset();
-    },
-    onError: (error) => {
-      toast({
-        title: "Erro ao enviar avaliação",
-        description: "Tente novamente mais tarde.",
-        variant: "destructive",
-      });
     },
   });
 

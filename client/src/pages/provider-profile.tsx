@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,7 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Star, MapPin, Phone, Mail, Calendar, Edit, User as UserIcon } from "lucide-react";
 import { authManager, authenticatedRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { useMutationWithToast } from "@/hooks/useMutationWithToast";
+import { formatDate } from "@/utils/format";
 import { ServiceProvider, User, ServiceCategory, insertServiceProviderSchema, Review } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -187,7 +188,7 @@ export default function ProviderProfile() {
     }
   }, [provider, form]);
 
-  const createRequestMutation = useMutation({
+  const createRequestMutation = useMutationWithToast({
     mutationFn: async (data: RequestForm) => {
       // Validar preço mínimo antes de enviar
       if (provider) {
@@ -235,21 +236,24 @@ export default function ProviderProfile() {
       const response = await authenticatedRequest('POST', '/api/requests', payload);
       return response.json();
     },
+    successMessage: "Solicitação enviada!",
+    successDescription: "O profissional foi notificado sobre sua solicitação.",
+    errorMessage: "Erro ao enviar solicitação",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests"],
     onSuccess: () => {
-      toast({
-        title: "Solicitação enviada!",
-        description: "O profissional foi notificado sobre sua solicitação.",
-      });
       setShowRequestForm(false);
       form.reset();
-      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
     },
     onError: (error: any) => {
-      toast({
-        title: "Erro ao enviar solicitação",
-        description: error.response?.data?.message || error.message || "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
+      // The error toast is handled by useMutationWithToast, but we can customize it here if needed
+      if (error.response?.data?.message || error.message) {
+        toast({
+          title: "Erro ao enviar solicitação",
+          description: error.response?.data?.message || error.message,
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -288,46 +292,33 @@ export default function ProviderProfile() {
 
 
 
-  const updateProviderMutation = useMutation({
+  const updateProviderMutation = useMutationWithToast({
     mutationFn: async (data: any) => {
       const response = await authenticatedRequest('PUT', `/api/providers/${providerId}`, data);
       return response.json();
     },
+    successMessage: "Serviço atualizado!",
+    successDescription: "Suas alterações foram salvas com sucesso.",
+    errorMessage: "Erro ao atualizar serviço",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/providers"],
     onSuccess: () => {
-      toast({
-        title: "Serviço atualizado!",
-        description: "Suas alterações foram salvas com sucesso.",
-      });
       setShowEditForm(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/providers", providerId] });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Erro ao atualizar serviço",
-        description: error.message || "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
     },
   });
 
-  const deleteProviderMutation = useMutation({
+  const deleteProviderMutation = useMutationWithToast({
     mutationFn: async () => {
       const response = await authenticatedRequest('DELETE', `/api/providers/${providerId}`);
       return response.json();
     },
+    successMessage: "Serviço excluído!",
+    successDescription: "Seu anúncio foi removido da plataforma.",
+    errorMessage: "Erro ao excluir serviço",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/providers"],
     onSuccess: () => {
-      toast({
-        title: "Serviço excluído!",
-        description: "Seu anúncio foi removido da plataforma.",
-      });
       setLocation('/services');
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Erro ao excluir serviço",
-        description: error.response?.data?.message || "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
     },
   });
 
@@ -483,7 +474,7 @@ export default function ProviderProfile() {
                           <div className="flex items-center justify-between">
                             <h4 className="font-semibold text-gray-900">{review.reviewer.name}</h4>
                             <span className="text-sm text-gray-500">
-                              {new Date(review.createdAt).toLocaleDateString('pt-BR')}
+                              {formatDate(review.createdAt)}
                             </span>
                           </div>
                           <div className="flex items-center my-1">
