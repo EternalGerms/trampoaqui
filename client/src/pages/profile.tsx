@@ -25,6 +25,7 @@ import Header from "@/components/header";
 import Footer from "@/components/footer";
 import { authManager } from "@/lib/auth";
 import { ServiceProvider, User as UserType, ServiceCategory, Review } from "@shared/schema";
+import EditProfileDialog from "@/components/edit-profile-dialog";
 
 type ProviderWithDetails = ServiceProvider & {
   user: UserType;
@@ -47,6 +48,7 @@ export default function Profile() {
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("about");
   const [clientReviewsView, setClientReviewsView] = useState<"received" | "sent">("received");
+  const [showEditProfileDialog, setShowEditProfileDialog] = useState(false);
   
   const currentUser = authManager.getUser();
   const userId = params.id;
@@ -332,7 +334,7 @@ export default function Profile() {
               <div className="flex flex-col space-y-3 mt-6 lg:mt-0">
                 {isOwner ? (
                   <Button 
-                    onClick={() => setLocation('/dashboard')}
+                    onClick={() => setShowEditProfileDialog(true)}
                     className="w-full lg:w-auto"
                   >
                     <Edit className="w-4 h-4 mr-2" />
@@ -755,6 +757,15 @@ export default function Profile() {
         </div>
       </main>
       <Footer />
+      
+      {/* Edit Profile Dialog */}
+      {isOwner && user && (
+        <EditProfileDialog
+          user={user}
+          isOpen={showEditProfileDialog}
+          onOpenChange={setShowEditProfileDialog}
+        />
+      )}
     </div>
   );
 }

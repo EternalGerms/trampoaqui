@@ -10,8 +10,14 @@ export interface User {
   bio?: string;
   experience?: string;
   location?: string;
+  phone?: string;
+  cep?: string;
   city?: string;
   state?: string;
+  street?: string;
+  neighborhood?: string;
+  number?: string;
+  complement?: string;
 }
 
 export interface AuthResponse {

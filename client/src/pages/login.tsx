@@ -21,7 +21,6 @@ type LoginForm = z.infer<typeof loginSchema>;
 export default function Login() {
   const [, setLocation] = useLocation();
   const [isLoading, setIsLoading] = useState(false);
-  const [isResending, setIsResending] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<LoginForm>({
@@ -56,53 +55,6 @@ export default function Login() {
     }
   };
 
-  const handleResendVerification = async () => {
-    const emailValue = form.getValues("email")?.trim();
-
-    if (!emailValue) {
-      toast({
-        title: "Informe seu email",
-        description: "Digite o email que deseja verificar antes de reenviar.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsResending(true);
-    try {
-      const response = await fetch("/api/auth/resend-verification", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email: emailValue }),
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (response.ok) {
-        toast({
-          title: "Email reenviado!",
-          description: data.message ?? "Verifique sua caixa de entrada (e a pasta de spam).",
-        });
-      } else {
-        toast({
-          title: "Não foi possível reenviar",
-          description: data.message ?? "Tente novamente em instantes.",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Erro ao reenviar verificação:", error);
-      toast({
-        title: "Erro inesperado",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsResending(false);
-    }
-  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -154,21 +106,6 @@ export default function Login() {
               >
                 {isLoading ? "Entrando..." : "Entrar"}
               </Button>
-              <div className="pt-2 text-center">
-                <p className="text-xs text-gray-500 mb-2">
-                  Não recebeu o email de confirmação? Reenvie para continuar.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={handleResendVerification}
-                  disabled={isResending}
-                >
-                  {isResending ? "Reenviando..." : "Reenviar email de verificação"}
-                </Button>
-              </div>
             </form>
           </Form>
           

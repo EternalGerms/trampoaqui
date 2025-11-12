@@ -35,7 +35,19 @@ export interface IStorage {
   getUserByVerificationToken(token: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<User>): Promise<User>;
-  updateUserProfile(userId: string, profile: { bio?: string; experience?: string; location?: string }): Promise<User>;
+  updateUserProfile(userId: string, profile: { 
+    bio?: string; 
+    experience?: string; 
+    location?: string;
+    phone?: string;
+    cep?: string;
+    city?: string;
+    state?: string;
+    street?: string;
+    neighborhood?: string;
+    number?: string;
+    complement?: string;
+  }): Promise<User>;
   enableProviderCapability(userId: string): Promise<User>;
   
   // Service Category operations
@@ -157,7 +169,19 @@ export class DatabaseStorage implements IStorage {
     return updatedUser;
   }
 
-  async updateUserProfile(userId: string, profile: { bio?: string; experience?: string; location?: string }): Promise<User> {
+  async updateUserProfile(userId: string, profile: { 
+    bio?: string; 
+    experience?: string; 
+    location?: string;
+    phone?: string;
+    cep?: string;
+    city?: string;
+    state?: string;
+    street?: string;
+    neighborhood?: string;
+    number?: string;
+    complement?: string;
+  }): Promise<User> {
     const [user] = await db
       .update(users)
       .set(profile)

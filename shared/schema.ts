@@ -253,6 +253,49 @@ export const updateProviderProfileSchema = z.object({
   }, "Formato recomendado: Cidade - Estado (ex: São Paulo - SP)"),
 });
 
+// User profile update schema (for updating user address and personal info)
+export const updateUserProfileSchema = z.object({
+  phone: z.string().optional(),
+  cep: z.string().optional().refine((cep) => {
+    if (!cep) return true;
+    // Remove non-numeric characters
+    const cleanCep = cep.replace(/\D/g, '');
+    return cleanCep.length === 8;
+  }, "CEP deve ter 8 dígitos"),
+  city: z.string().optional(),
+  state: z.string().optional().refine((state) => {
+    if (!state) return true;
+    const validStates = [
+      'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 
+      'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 
+      'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+    ];
+    return validStates.includes(state.toUpperCase());
+  }, "Estado deve ser uma UF válida do Brasil"),
+  street: z.string().optional(),
+  neighborhood: z.string().optional(),
+  number: z.string().optional(),
+  complement: z.string().optional(),
+  bio: z.string().optional(),
+  experience: z.string().optional(),
+  location: z.string().optional(),
+});
+
+// Change password schema
+export const changePasswordSchema = z.object({
+  oldPassword: z.string().min(1, "Senha antiga é obrigatória"),
+  newPassword: z.string().min(6, "Nova senha deve ter pelo menos 6 caracteres"),
+  confirmPassword: z.string().min(1, "Confirmação de senha é obrigatória"),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: "As senhas não coincidem",
+  path: ["confirmPassword"],
+});
+
+// Delete account schema
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1, "Senha é obrigatória para confirmar a exclusão"),
+});
+
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({
   id: true,
 });

@@ -8,7 +8,7 @@ import { db } from "./db";
 import { sql, eq, desc, or } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { insertUserSchema, insertServiceProviderSchema, insertServiceRequestSchema, updateServiceRequestSchema, insertMessageSchema, insertReviewSchema, insertNegotiationSchema, updateProviderProfileSchema, insertWithdrawalSchema, users, serviceProviders, serviceRequests, serviceCategories } from "@shared/schema";
+import { insertUserSchema, insertServiceProviderSchema, insertServiceRequestSchema, updateServiceRequestSchema, insertMessageSchema, insertReviewSchema, insertNegotiationSchema, updateProviderProfileSchema, updateUserProfileSchema, changePasswordSchema, deleteAccountSchema, insertWithdrawalSchema, users, serviceProviders, serviceRequests, serviceCategories, messages, reviews, negotiations, withdrawals } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { generateVerificationToken, sendVerificationEmail } from "./utils/email";
 import { validateFutureDateTime } from "./utils/validation";
@@ -393,8 +393,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bio: user.bio,
         experience: user.experience,
         location: user.location,
+        phone: user.phone,
+        cep: user.cep,
         city: user.city,
-        state: user.state
+        state: user.state,
+        street: user.street,
+        neighborhood: user.neighborhood,
+        number: user.number,
+        complement: user.complement
       });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
@@ -443,10 +449,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 
 
-  // Update provider profile (personal info)
+  // Update user profile (personal info and address)
   app.put("/api/auth/profile", authenticateToken, async (req: Request, res: Response) => {
     try {
-      const profileData = updateProviderProfileSchema.parse(req.body);
+      const profileData = updateUserProfileSchema.parse(req.body);
       const user = await storage.updateUserProfile(req.user!.userId, profileData);
       
       res.json({ 
@@ -454,15 +460,153 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: user.email, 
         name: user.name, 
         isProviderEnabled: user.isProviderEnabled,
+        isAdmin: user.isAdmin,
+        emailVerified: user.emailVerified,
         bio: user.bio,
         experience: user.experience,
         location: user.location,
+        phone: user.phone,
+        cep: user.cep,
         city: user.city,
-        state: user.state
+        state: user.state,
+        street: user.street,
+        neighborhood: user.neighborhood,
+        number: user.number,
+        complement: user.complement
       });
     } catch (error) {
       console.error("Error updating profile:", error);
+      if (error instanceof ZodError) {
+        return res.status(400).json({ message: "Invalid profile data", details: error.flatten() });
+      }
       res.status(400).json({ message: "Invalid profile data", details: error instanceof Error ? error.message : "Unknown error" });
+    }
+  });
+
+  // Change password
+  app.put("/api/auth/change-password", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const { oldPassword, newPassword } = changePasswordSchema.parse(req.body);
+      
+      // Get user from database
+      const user = await storage.getUser(req.user!.userId);
+      if (!user) {
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      }
+
+      // Verify old password
+      const passwordMatch = await bcrypt.compare(oldPassword, user.password);
+      if (!passwordMatch) {
+        return res.status(401).json({ message: "Senha antiga incorreta" });
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update password
+      await storage.updateUser(req.user!.userId, { password: hashedPassword });
+
+      res.json({ message: "Senha alterada com sucesso" });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      if (error instanceof ZodError) {
+        return res.status(400).json({ message: "Dados inválidos", details: error.flatten() });
+      }
+      res.status(500).json({ message: "Erro ao alterar senha", details: error instanceof Error ? error.message : "Unknown error" });
+    }
+  });
+
+  // Delete user account
+  app.delete("/api/auth/account", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const { password } = deleteAccountSchema.parse(req.body);
+      
+      // Get user from database
+      const user = await storage.getUser(req.user!.userId);
+      if (!user) {
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      }
+
+      // Verify password
+      const passwordMatch = await bcrypt.compare(password, user.password);
+      if (!passwordMatch) {
+        return res.status(401).json({ message: "Senha incorreta" });
+      }
+
+      // Check for active requests as client
+      const clientRequests = await storage.getServiceRequestsByClient(req.user!.userId);
+      const hasActiveClientRequests = clientRequests.some(request => 
+        request.status === 'pending' || 
+        request.status === 'accepted' || 
+        request.status === 'negotiating' || 
+        request.status === 'payment_pending'
+      );
+
+      if (hasActiveClientRequests) {
+        return res.status(400).json({ 
+          message: "Não é possível excluir a conta com serviços ativos. Finalize ou cancele os serviços primeiro." 
+        });
+      }
+
+      // Check for active requests as provider
+      const userProviders = await storage.getServiceProvidersByUserIdWithDetails(req.user!.userId);
+      for (const provider of userProviders) {
+        const providerRequests = await storage.getServiceRequestsByProvider(provider.id);
+        const hasActiveProviderRequests = providerRequests.some(request => 
+          request.status === 'pending' || 
+          request.status === 'accepted' || 
+          request.status === 'negotiating' || 
+          request.status === 'payment_pending'
+        );
+
+        if (hasActiveProviderRequests) {
+          return res.status(400).json({ 
+            message: "Não é possível excluir a conta com serviços ativos. Finalize ou cancele os serviços primeiro." 
+          });
+        }
+      }
+
+      // Delete all related data using session_replication_role = replica to bypass foreign key constraints
+      await db.execute(sql`SET session_replication_role = replica`);
+
+      // Delete in order: messages, reviews, negotiations, service_requests, service_providers, withdrawals, users
+      await db.delete(messages).where(or(eq(messages.senderId, req.user!.userId), eq(messages.receiverId, req.user!.userId)));
+      await db.delete(reviews).where(or(eq(reviews.reviewerId, req.user!.userId), eq(reviews.revieweeId, req.user!.userId)));
+      await db.delete(negotiations).where(eq(negotiations.proposerId, req.user!.userId));
+      
+      // Delete service requests where user is client
+      await db.delete(serviceRequests).where(eq(serviceRequests.clientId, req.user!.userId));
+      
+      // Delete service requests where user is provider (through service_providers)
+      for (const provider of userProviders) {
+        await db.delete(serviceRequests).where(eq(serviceRequests.providerId, provider.id));
+      }
+      
+      // Delete service providers
+      await db.delete(serviceProviders).where(eq(serviceProviders.userId, req.user!.userId));
+      
+      // Delete withdrawals
+      await db.delete(withdrawals).where(eq(withdrawals.userId, req.user!.userId));
+      
+      // Delete user
+      await db.delete(users).where(eq(users.id, req.user!.userId));
+
+      // Re-enable foreign key constraints
+      await db.execute(sql`SET session_replication_role = DEFAULT`);
+
+      res.json({ message: "Conta excluída com sucesso" });
+    } catch (error) {
+      console.error("Error deleting account:", error);
+      // Re-enable foreign key constraints in case of error
+      try {
+        await db.execute(sql`SET session_replication_role = DEFAULT`);
+      } catch (e) {
+        console.error("Error re-enabling foreign key constraints:", e);
+      }
+      if (error instanceof ZodError) {
+        return res.status(400).json({ message: "Dados inválidos", details: error.flatten() });
+      }
+      res.status(500).json({ message: "Erro ao excluir conta", details: error instanceof Error ? error.message : "Unknown error" });
     }
   });
 
@@ -1146,7 +1290,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bio: user.bio,
         experience: user.experience,
         isProviderEnabled: user.isProviderEnabled,
+        isAdmin: user.isAdmin,
         emailVerified: user.emailVerified,
+        cep: user.cep,
+        city: user.city,
+        state: user.state,
+        street: user.street,
+        neighborhood: user.neighborhood,
+        number: user.number,
+        complement: user.complement,
         createdAt: user.createdAt,
       });
     } catch (error) {
