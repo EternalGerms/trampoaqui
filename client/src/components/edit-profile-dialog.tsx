@@ -66,6 +66,9 @@ const updateProfileSchema = z.object({
   neighborhood: z.string().optional(),
   number: z.string().optional(),
   complement: z.string().optional(),
+  bio: z.string().optional(),
+  experience: z.string().optional(),
+  location: z.string().optional(),
 });
 
 // Schema para alteração de senha
@@ -114,6 +117,9 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
       neighborhood: user.neighborhood || "",
       number: user.number || "",
       complement: user.complement || "",
+      bio: user.bio || "",
+      experience: user.experience || "",
+      location: user.location || "",
     },
   });
 
@@ -138,6 +144,9 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
   // Reset forms when user changes or dialog opens
   useEffect(() => {
     if (user && isOpen) {
+      // Se location não estiver definido mas city e state estiverem, criar location
+      const locationValue = user.location || (user.city && user.state ? `${user.city} - ${user.state}` : "");
+      
       addressForm.reset({
         phone: user.phone || "",
         cep: user.cep || "",
@@ -147,6 +156,9 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
         neighborhood: user.neighborhood || "",
         number: user.number || "",
         complement: user.complement || "",
+        bio: user.bio || "",
+        experience: user.experience || "",
+        location: locationValue,
       });
       passwordForm.reset({
         oldPassword: "",
@@ -158,8 +170,29 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
       });
       setActiveTab("address");
       setShowDeleteConfirm(false);
+      
+      // Se for prestador e location ainda não estiver preenchido, criar a partir de city e state
+      if (user.isProviderEnabled && !locationValue && user.city && user.state) {
+        // Usar setTimeout para evitar problemas de sincronização
+        setTimeout(() => {
+          addressForm.setValue('location', `${user.city} - ${user.state}`, { shouldValidate: false });
+        }, 0);
+      }
     }
   }, [user, isOpen]);
+
+  // Função auxiliar para atualizar location quando city ou state mudarem
+  const updateLocationFromCityState = (city: string, state: string) => {
+    if (user?.isProviderEnabled && city && state) {
+      const expectedLocation = `${city} - ${state}`;
+      const currentLocation = addressForm.getValues('location');
+      
+      // Atualizar location apenas se ainda não estiver no formato correto ou estiver vazio
+      if (!currentLocation || (!currentLocation.includes(' - '))) {
+        addressForm.setValue('location', expectedLocation, { shouldValidate: false });
+      }
+    }
+  };
 
   // Função para buscar endereço pelo CEP
   const fetchAddressByCep = async (cep: string) => {
@@ -176,6 +209,11 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
         addressForm.setValue('state', data.uf);
         addressForm.setValue('street', data.logradouro);
         addressForm.setValue('neighborhood', data.bairro);
+        
+        // Atualizar location se for prestador
+        if (user?.isProviderEnabled && data.localidade && data.uf) {
+          updateLocationFromCityState(data.localidade, data.uf);
+        }
         
         toast({
           title: "Endereço encontrado!",
@@ -213,6 +251,8 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
       authManager.setAuth(authManager.getToken()!, updatedUser);
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", user.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
       onOpenChange(false);
     },
     onError: (error: unknown) => {
@@ -479,7 +519,19 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Estado</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <Select 
+                            onValueChange={(value) => {
+                              field.onChange(value);
+                              // Atualizar location se for prestador
+                              if (user?.isProviderEnabled) {
+                                const city = addressForm.getValues('city');
+                                if (city) {
+                                  updateLocationFromCityState(city, value);
+                                }
+                              }
+                            }} 
+                            value={field.value}
+                          >
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Selecione o estado" />
@@ -506,7 +558,20 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
                       <FormItem>
                         <FormLabel>Cidade</FormLabel>
                         <FormControl>
-                          <Input placeholder="Digite sua cidade" {...field} />
+                          <Input 
+                            placeholder="Digite sua cidade" 
+                            {...field}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              // Atualizar location se for prestador
+                              if (user?.isProviderEnabled) {
+                                const state = addressForm.getValues('state');
+                                if (state) {
+                                  updateLocationFromCityState(e.target.value, state);
+                                }
+                              }
+                            }}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -570,6 +635,82 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
                       </FormItem>
                     )}
                   />
+
+                  {/* Campos de prestador (exibidos apenas se for prestador) */}
+                  {user.isProviderEnabled && (
+                    <>
+                      <div className="pt-4 border-t">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-4">Informações Profissionais</h3>
+                      </div>
+
+                      <FormField
+                        control={addressForm.control}
+                        name="location"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Localização de Atendimento</FormLabel>
+                            <FormControl>
+                              <Input 
+                                placeholder="Cidade - Estado (ex: São Paulo - SP)" 
+                                {...field}
+                                onChange={(e) => {
+                                  field.onChange(e);
+                                  // Se o formato for "Cidade - Estado", atualizar city e state
+                                  const value = e.target.value;
+                                  const parts = value.split(' - ');
+                                  if (parts.length === 2) {
+                                    addressForm.setValue('city', parts[0].trim());
+                                    addressForm.setValue('state', parts[1].trim());
+                                  }
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                            <p className="text-xs text-gray-500 mt-1">
+                              Formato: Cidade - Estado (ex: São Paulo - SP)
+                            </p>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={addressForm.control}
+                        name="bio"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Sobre Mim</FormLabel>
+                            <FormControl>
+                              <Textarea 
+                                placeholder="Conte um pouco sobre você, suas especialidades e o que te motiva..."
+                                rows={4}
+                                {...field} 
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={addressForm.control}
+                        name="experience"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Experiência</FormLabel>
+                            <FormControl>
+                              <Textarea 
+                                placeholder="Descreva sua experiência profissional, formação, certificações e trabalhos realizados..."
+                                rows={4}
+                                {...field}
+                                value={field.value || ''} 
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
 
                   <div className="flex justify-end gap-3 pt-4">
                     <Button

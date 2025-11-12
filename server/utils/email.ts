@@ -79,13 +79,7 @@ export const sendVerificationEmail = async (email: string, token: string): Promi
             <td align="center">
               <table cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 10px 25px rgba(15,23,42,0.1);">
                 <tr>
-                  <td style="background:linear-gradient(135deg,#2563eb,#1d4ed8);padding:32px 24px;color:#f8fafc;">
-                    <h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em;">${APP_NAME}</h1>
-                    <p style="margin:12px 0 0;font-size:16px;opacity:0.9;">Confirme seu endereço de e-mail para continuar</p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:32px 24px;">
+                  <td style="padding:40px 24px 32px 24px;">
                     <p style="margin:0 0 16px;font-size:16px;color:#0f172a;">Olá,</p>
                     <p style="margin:0 0 24px;font-size:16px;line-height:1.6;color:#334155;">
                       Recebemos uma solicitação para criar uma conta em <strong>${APP_NAME}</strong> usando este endereço de e-mail.

@@ -75,14 +75,6 @@ const BRAZILIAN_STATES = [
   { value: "TO", label: "Tocantins" }
 ];
 
-const updateProviderSchema = z.object({
-  bio: z.string().optional(),
-  experience: z.string().min(10, "Experiência deve ter pelo menos 10 caracteres"),
-  city: z.string().min(2, "Cidade deve ter pelo menos 2 caracteres"),
-  state: z.string().min(2, "Estado é obrigatório"),
-  location: z.string().optional(), // Campo para compatibilidade com o backend
-});
-
 const newServiceSchema = z.object({
   categoryId: z.string().min(1, "Selecione uma categoria"),
   description: z.string().min(10, "Descrição deve ter pelo menos 10 caracteres"),
@@ -125,39 +117,6 @@ const reviewSchema = z.object({
   comment: z.string().min(10, "Comentário deve ter pelo menos 10 caracteres"),
 });
 
-// Função para validar cidade e estado
-const validateCityState = async (location: string): Promise<boolean> => {
-  if (!location) return true;
-  
-  // Extrair cidade e estado da localização (formato: "Cidade - Estado")
-  const parts = location.split(' - ');
-  if (parts.length !== 2) return true; // Se não estiver no formato esperado, permitir
-  
-  const city = parts[0].trim();
-  const state = parts[1].trim();
-  
-  if (!city || !state) return true;
-  
-  try {
-    // Usar a API do IBGE para validar cidade e estado
-    const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${state.toUpperCase()}/municipios`);
-    const cities = await response.json();
-    
-    const cityExists = cities.some((c: any) => 
-      c.nome.toLowerCase() === city.toLowerCase()
-    );
-    
-    if (!cityExists) {
-      return false;
-    }
-    
-    return true;
-  } catch (error) {
-    return true;
-  }
-};
-
-type UpdateProviderForm = z.infer<typeof updateProviderSchema>;
 type NewServiceForm = z.infer<typeof newServiceSchema>;
 type CounterProposalForm = z.infer<typeof counterProposalSchema>;
 type ReviewForm = z.infer<typeof reviewSchema>;
@@ -245,7 +204,6 @@ type ClientRequest = ServiceRequest & {
 export default function ProviderDashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [editingProfile, setEditingProfile] = useState(false);
   const [counterProposalRequestId, setCounterProposalRequestId] = useState<string | null>(null);
   const [reviewRequestId, setReviewRequestId] = useState<string | null>(null);
   const [revieweeId, setRevieweeId] = useState<string | null>(null);
@@ -300,19 +258,6 @@ export default function ProviderDashboard() {
     },
   });
 
-
-  
-
-  const form = useForm<UpdateProviderForm>({
-    resolver: zodResolver(updateProviderSchema),
-    defaultValues: {
-      bio: provider?.user?.bio || "",
-      experience: provider?.experience || "",
-      city: provider?.user?.city || "",
-      state: provider?.user?.state || "",
-    },
-  });
-
   const newServiceForm = useForm<NewServiceForm>({
     resolver: zodResolver(newServiceSchema),
     defaultValues: {
@@ -345,44 +290,6 @@ export default function ProviderDashboard() {
     defaultValues: {
       rating: "",
       comment: "",
-    },
-  });
-
-  // Reset form when provider data loads
-  useEffect(() => {
-    if (provider) {
-      form.reset({
-        bio: provider.user?.bio || "",
-        experience: provider.experience || "",
-        city: provider.user?.city || "",
-        state: provider.user?.state || "",
-      });
-    }
-  }, [provider, form]);
-
-  const updateProviderMutation = useMutation({
-    mutationFn: async (data: UpdateProviderForm) => {
-      // Update user profile (bio, experience, location)
-      const response = await authenticatedRequest('PUT', `/api/users/profile`, {
-        ...data,
-        userId: user?.id,
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Perfil atualizado!",
-        description: "Suas informações foram salvas com sucesso.",
-      });
-      setEditingProfile(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao atualizar perfil",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
     },
   });
 
@@ -655,26 +562,6 @@ export default function ProviderDashboard() {
     return null;
   }
 
-  const handleUpdateProvider = async (data: UpdateProviderForm) => {
-    // Validar cidade e estado antes de prosseguir
-    const isCityStateValid = await validateCityState(`${data.city} - ${data.state}`);
-    if (!isCityStateValid) {
-      toast({
-        title: "Localização inválida",
-        description: "A cidade informada não foi encontrada no estado especificado. Verifique se está correta.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Converter os dados para o formato esperado pelo backend
-    const updateData = {
-      ...data,
-      location: `${data.city} - ${data.state}`
-    };
-    
-    updateProviderMutation.mutate(updateData);
-  };
 
   const handleCreateNewService = (data: NewServiceForm) => {
     // Verificar se já existe um serviço na mesma categoria
@@ -948,10 +835,9 @@ export default function ProviderDashboard() {
               ) : (
                 <>
                   <Tabs defaultValue="overview" className="space-y-6">
-                    <TabsList className="grid w-full grid-cols-4">
+                    <TabsList className="grid w-full grid-cols-3">
                       <TabsTrigger value="overview">Visão Geral</TabsTrigger>
                       <TabsTrigger value="requests">Solicitações</TabsTrigger>
-                      <TabsTrigger value="profile">Editar Perfil</TabsTrigger>
                       <TabsTrigger value="analytics">Relatórios</TabsTrigger>
                     </TabsList>
 
@@ -1894,118 +1780,6 @@ export default function ProviderDashboard() {
                               </p>
                             </div>
                           )}
-                        </CardContent>
-                      </Card>
-                    </TabsContent>
-
-                    <TabsContent value="profile">
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>Editar Perfil Profissional</CardTitle>
-                          <CardDescription>
-                            Mantenha suas informações pessoais atualizadas
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <Form {...form}>
-                            <form onSubmit={form.handleSubmit(handleUpdateProvider)} className="space-y-6">
-                              <FormField
-                                control={form.control}
-                                name="bio"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Sobre Mim</FormLabel>
-                                    <FormControl>
-                                      <Textarea 
-                                        placeholder="Conte um pouco sobre você, suas especialidades e o que te motiva..."
-                                        rows={4}
-                                        {...field} 
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-
-                              <FormField
-                                control={form.control}
-                                name="experience"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Experiências</FormLabel>
-                                    <FormControl>
-                                      <Textarea 
-                                        placeholder="Descreva sua experiência profissional, formação, certificações e trabalhos realizados..."
-                                        rows={4}
-                                        {...field}
-                                        value={field.value || ''} 
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <FormField
-                                  control={form.control}
-                                  name="state"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Estado</FormLabel>
-                                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                        <FormControl>
-                                          <SelectTrigger>
-                                            <SelectValue placeholder="Selecione o estado" />
-                                          </SelectTrigger>
-                                        </FormControl>
-                                        <SelectContent>
-                                          {BRAZILIAN_STATES.map((state) => (
-                                            <SelectItem key={state.value} value={state.value}>
-                                              {state.label} ({state.value})
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-
-                                <FormField
-                                  control={form.control}
-                                  name="city"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Cidade</FormLabel>
-                                      <FormControl>
-                                        <Input placeholder="Digite sua cidade" {...field} />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                              </div>
-
-                              <div className="flex gap-4">
-                                <Button 
-                                  type="submit" 
-                                  disabled={updateProviderMutation.isPending}
-                                  className="bg-primary-600 hover:bg-primary-700"
-                                >
-                                  {updateProviderMutation.isPending ? "Salvando..." : "Salvar Alterações"}
-                                </Button>
-                                
-                                <Button 
-                                  type="button" 
-                                  variant="outline"
-                                  onClick={() => form.reset()}
-                                >
-                                  Cancelar
-                                </Button>
-                              </div>
-                            </form>
-                          </Form>
                         </CardContent>
                       </Card>
                     </TabsContent>
