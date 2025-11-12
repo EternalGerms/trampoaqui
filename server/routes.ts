@@ -11,12 +11,16 @@ import jwt from "jsonwebtoken";
 import { insertUserSchema, insertServiceProviderSchema, insertServiceRequestSchema, updateServiceRequestSchema, insertMessageSchema, insertReviewSchema, insertNegotiationSchema, updateProviderProfileSchema, insertWithdrawalSchema, users, serviceProviders, serviceRequests, serviceCategories } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { generateVerificationToken, sendVerificationEmail } from "./utils/email";
+import { validateFutureDateTime } from "./utils/validation";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
 if (!JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable is required");
 }
+
+const RESEND_VERIFICATION_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+const resendVerificationTracker = new Map<string, number>();
 
 // Estender tipo Request para incluir usuário
 declare global {
@@ -207,12 +211,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Enviar e-mail de verificação
-      try {
-        await sendVerificationEmail(user.email, emailVerificationToken);
-      } catch (emailError) {
-        console.error("Failed to send verification email:", emailError);
-        // Opcional: lidar com o erro de envio de e-mail.
-        // Como a verificação é opcional, o registro pode continuar mesmo se o e-mail falhar.
+      const emailSent = await sendVerificationEmail(user.email, emailVerificationToken);
+      if (!emailSent) {
+        console.warn("Verification email could not be sent during registration.");
       }
 
       // Gerar token JWT
@@ -225,7 +226,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: user.email, 
           name: user.name, 
           isProviderEnabled: user.isProviderEnabled,
-          isAdmin: user.isAdmin
+          isAdmin: user.isAdmin,
+          emailVerified: user.emailVerified,
         } 
       });
     } catch (error) {
@@ -271,11 +273,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: user.email, 
           name: user.name, 
           isProviderEnabled: user.isProviderEnabled,
-          isAdmin: user.isAdmin
+          isAdmin: user.isAdmin,
+          emailVerified: user.emailVerified,
         } 
       });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/auth/resend-verification", async (req: Request, res: Response) => {
+    const resendSchema = z.object({
+      email: z.string().email("Email inválido").transform((value) => value.trim().toLowerCase()),
+    });
+
+    try {
+      const { email } = resendSchema.parse(req.body);
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      }
+
+      if (user.emailVerified) {
+        return res.status(400).json({ message: "Este e-mail já foi verificado" });
+      }
+
+      const now = Date.now();
+      const lastAttempt = resendVerificationTracker.get(user.id) ?? 0;
+      const timeSinceLastAttempt = now - lastAttempt;
+
+      if (timeSinceLastAttempt < RESEND_VERIFICATION_INTERVAL_MS) {
+        const secondsRemaining = Math.ceil((RESEND_VERIFICATION_INTERVAL_MS - timeSinceLastAttempt) / 1000);
+        return res.status(429).json({
+          message: `Aguarde ${secondsRemaining}s para solicitar um novo e-mail de verificação.`,
+          retryAfter: secondsRemaining,
+        });
+      }
+
+      const emailVerificationToken = generateVerificationToken();
+      const emailVerificationExpires = new Date(Date.now() + 3600000); // 1 hour from now
+
+      await storage.updateUser(user.id, {
+        emailVerificationToken,
+        emailVerificationExpires,
+      });
+
+      const emailSent = await sendVerificationEmail(user.email, emailVerificationToken);
+      if (!emailSent) {
+        console.error("Failed to resend verification email: transporter not initialized or send failed.");
+        return res.status(500).json({ message: "Não foi possível enviar o e-mail de verificação. Tente novamente mais tarde." });
+      }
+
+      resendVerificationTracker.set(user.id, now);
+
+      return res.status(200).json({
+        message: "Um novo e-mail de verificação foi enviado.",
+      });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ message: "Dados inválidos", details: error.flatten() });
+      }
+
+      console.error("Erro ao reenviar e-mail de verificação:", error);
+      return res.status(500).json({ message: "Erro interno do servidor" });
     }
   });
 
@@ -666,11 +727,248 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clientId: req.user!.userId,
       });
       
+      // Buscar o provider para validar preço mínimo
+      const provider = await storage.getServiceProvider(requestData.providerId);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      // Validar preço mínimo baseado no tipo de orçamento
+      let minPrice: number | null = null;
+      let calculatedPrice: number | null = null;
+
+      if (requestData.pricingType === 'hourly') {
+        if (!provider.minHourlyRate) {
+          return res.status(400).json({ message: "Provider não possui valor mínimo por hora configurado" });
+        }
+        minPrice = parseFloat(provider.minHourlyRate.toString());
+        if (requestData.proposedHours) {
+          calculatedPrice = requestData.proposedHours * minPrice;
+        }
+      } else if (requestData.pricingType === 'daily') {
+        if (!provider.minDailyRate) {
+          return res.status(400).json({ message: "Provider não possui valor mínimo por dia configurado" });
+        }
+        minPrice = parseFloat(provider.minDailyRate.toString());
+        if (requestData.proposedDays) {
+          calculatedPrice = requestData.proposedDays * minPrice;
+        }
+      } else if (requestData.pricingType === 'fixed') {
+        if (!provider.minFixedRate) {
+          return res.status(400).json({ message: "Provider não possui valor mínimo fixo configurado" });
+        }
+        minPrice = parseFloat(provider.minFixedRate.toString());
+      }
+
+      // Validar proposedPrice se fornecido
+      if (requestData.proposedPrice) {
+        const proposedPriceValue = parseFloat(requestData.proposedPrice.toString());
+        const priceToCompare = calculatedPrice || minPrice;
+        
+        if (priceToCompare && proposedPriceValue < priceToCompare) {
+          return res.status(400).json({ 
+            message: `O preço proposto (R$ ${proposedPriceValue.toFixed(2)}) deve ser maior ou igual ao valor mínimo de R$ ${priceToCompare.toFixed(2)}` 
+          });
+        }
+      }
+
+      // Para hourly e daily, calcular e definir o preço final automaticamente se não foi fornecido
+      if ((requestData.pricingType === 'hourly' || requestData.pricingType === 'daily') && calculatedPrice) {
+        requestData.proposedPrice = calculatedPrice.toString();
+      }
+
+      // Validar data/hora se fornecida
+      if (requestData.scheduledDate) {
+        const dateValidation = validateFutureDateTime(requestData.scheduledDate);
+        if (!dateValidation.isValid) {
+          return res.status(400).json({ message: dateValidation.errorMessage });
+        }
+      }
+
+      // Para serviços diários, gerar array de dias
+      if (requestData.pricingType === 'daily' && requestData.proposedDays && requestData.scheduledDate) {
+        const dailySessions: Array<{
+          day: number;
+          scheduledDate: Date;
+          scheduledTime: string;
+          clientCompleted: boolean;
+          providerCompleted: boolean;
+        }> = [];
+
+        const startDate = new Date(requestData.scheduledDate);
+        const scheduledTime = startDate.toTimeString().slice(0, 5); // HH:MM
+
+        for (let i = 0; i < requestData.proposedDays; i++) {
+          const dayDate = new Date(startDate);
+          dayDate.setDate(startDate.getDate() + i);
+          
+          dailySessions.push({
+            day: i + 1,
+            scheduledDate: dayDate,
+            scheduledTime: scheduledTime,
+            clientCompleted: false,
+            providerCompleted: false,
+          });
+        }
+
+        requestData.dailySessions = dailySessions as any;
+      }
       
       const request = await storage.createServiceRequest(requestData);
       res.json(request);
     } catch (error) {
       console.error("Validation error:", error);
+      res.status(400).json({ message: "Invalid input data", details: error instanceof Error ? error.message : "Unknown error" });
+    }
+  });
+
+  // Endpoint para marcar dia individual como concluído ou editar data/hora
+  app.put("/api/requests/:id/daily-session/:dayIndex", authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const request = await storage.getServiceRequest(req.params.id);
+      if (!request) {
+        return res.status(404).json({ message: "Request not found" });
+      }
+
+      // Verificar se é um serviço diário
+      if (request.pricingType !== 'daily') {
+        return res.status(400).json({ message: "Este endpoint é apenas para serviços diários" });
+      }
+
+      // Validar status - só permite marcar dias como concluídos após pagamento
+      const allowedStatuses = ['pending_completion', 'accepted'];
+      if (!allowedStatuses.includes(request.status)) {
+        return res.status(400).json({ 
+          message: `Não é possível marcar dias como concluídos. O serviço deve estar aceito e pago. Status atual: ${request.status}` 
+        });
+      }
+
+      // Verificar se o pagamento foi realizado
+      if (!request.paymentCompletedAt) {
+        return res.status(400).json({ 
+          message: "Não é possível marcar dias como concluídos. O pagamento ainda não foi confirmado." 
+        });
+      }
+
+      // Get provider for this request
+      const provider = await storage.getServiceProvider(request.providerId);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      // Check if user has permission (client or provider)
+      const isClient = request.clientId === req.user!.userId;
+      const isProvider = provider.userId === req.user!.userId;
+      if (!isClient && !isProvider) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const dayIndex = parseInt(req.params.dayIndex);
+      if (isNaN(dayIndex) || dayIndex < 0) {
+        return res.status(400).json({ message: "Índice do dia inválido" });
+      }
+
+      // Obter dailySessions do request
+      let dailySessions: Array<{
+        day: number;
+        scheduledDate: Date | string;
+        scheduledTime: string;
+        clientCompleted: boolean;
+        providerCompleted: boolean;
+      }> = [];
+
+      if (request.dailySessions && Array.isArray(request.dailySessions)) {
+        dailySessions = request.dailySessions as any;
+      }
+
+      if (dayIndex >= dailySessions.length) {
+        return res.status(400).json({ message: "Índice do dia fora do range" });
+      }
+
+      const session = dailySessions[dayIndex];
+
+      // Processar atualização
+      if (req.body.completed !== undefined) {
+        // Marcar como concluído
+        if (isClient) {
+          session.clientCompleted = req.body.completed === true;
+        } else if (isProvider) {
+          session.providerCompleted = req.body.completed === true;
+        }
+      }
+
+      // Editar data/hora se fornecido (mesma validação de status aplica)
+      if (req.body.scheduledDate || req.body.scheduledTime) {
+        // Validação de status já foi feita acima, então podemos permitir edição
+        if (req.body.scheduledDate) {
+          const newDate = new Date(req.body.scheduledDate);
+          const dateValidation = validateFutureDateTime(newDate);
+          if (!dateValidation.isValid) {
+            return res.status(400).json({ message: dateValidation.errorMessage });
+          }
+          session.scheduledDate = newDate;
+        }
+        if (req.body.scheduledTime) {
+          session.scheduledTime = req.body.scheduledTime;
+          // Atualizar também a data se necessário
+          if (session.scheduledDate) {
+            const dateObj = typeof session.scheduledDate === 'string' ? new Date(session.scheduledDate) : session.scheduledDate;
+            const [hours, minutes] = req.body.scheduledTime.split(':');
+            dateObj.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+            const dateValidation = validateFutureDateTime(dateObj);
+            if (!dateValidation.isValid) {
+              return res.status(400).json({ message: dateValidation.errorMessage });
+            }
+            session.scheduledDate = dateObj;
+          }
+        }
+      }
+
+      // Atualizar o array
+      dailySessions[dayIndex] = session;
+
+      // Verificar se todos os dias estão concluídos por ambas as partes
+      const allCompleted = dailySessions.every(s => s.clientCompleted && s.providerCompleted);
+
+      // Atualizar o request
+      const now = new Date();
+      const updateData: any = {
+        dailySessions: dailySessions,
+        updatedAt: now,
+      };
+
+      // Se todos os dias estão concluídos e o pagamento foi realizado, marcar o serviço como concluído
+      if (allCompleted && request.status !== 'completed' && request.paymentCompletedAt) {
+        updateData.status = 'completed';
+        updateData.clientCompletedAt = now;
+        updateData.providerCompletedAt = now;
+      }
+
+      // Add balance to provider when service is completed (check if conditions are met)
+      const finalStatus = updateData.status || request.status;
+      const paymentWasCompleted = request.paymentCompletedAt != null; // Check for both null and undefined
+      const balanceNotAddedYet = !request.balanceAddedAt;
+      const bothPartiesConfirmed = updateData.clientCompletedAt && updateData.providerCompletedAt;
+      
+      if (finalStatus === 'completed' && 
+          paymentWasCompleted && 
+          bothPartiesConfirmed && 
+          balanceNotAddedYet && 
+          request.proposedPrice) {
+        const serviceAmount = parseFloat(request.proposedPrice.toString());
+        if (!isNaN(serviceAmount) && serviceAmount > 0) {
+          const platformFee = serviceAmount * 0.05; // 5% platform fee
+          const providerAmount = serviceAmount - platformFee;
+          
+          await storage.addToUserBalance(provider.userId, providerAmount);
+          updateData.balanceAddedAt = now;
+        }
+      }
+
+      const updatedRequest = await storage.updateServiceRequest(req.params.id, updateData);
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error("Error updating daily session:", error);
       res.status(400).json({ message: "Invalid input data", details: error instanceof Error ? error.message : "Unknown error" });
     }
   });
@@ -694,35 +992,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updateData = updateServiceRequestSchema.parse(req.body);
+
+      // Validar data/hora se fornecida na atualização
+      if (updateData.scheduledDate) {
+        const dateValidation = validateFutureDateTime(updateData.scheduledDate);
+        if (!dateValidation.isValid) {
+          return res.status(400).json({ message: dateValidation.errorMessage });
+        }
+      }
       
       // Handle completion logic
-      if (updateData.status === 'completed') {
-        const now = new Date();
-        const isClient = request.clientId === req.user!.userId;
-        const isProvider = provider.userId === req.user!.userId;
+      const now = new Date();
+      const isClient = request.clientId === req.user!.userId;
+      const isProvider = provider.userId === req.user!.userId;
+      const statusIsChangingToCompleted = updateData.status === 'completed' && request.status !== 'completed';
+      const statusIsAlreadyCompleted = request.status === 'completed';
+      
+      // If status is being set to completed, validate and set completion timestamps
+      if (statusIsChangingToCompleted) {
+        // Para serviços diários, validar se todas as diárias foram concluídas
+        if (request.pricingType === 'daily') {
+          if (request.dailySessions && Array.isArray(request.dailySessions)) {
+            const dailySessions = request.dailySessions as Array<{
+              clientCompleted: boolean;
+              providerCompleted: boolean;
+            }>;
+            const allDaysCompleted = dailySessions.every(s => s.clientCompleted && s.providerCompleted);
+            
+            if (!allDaysCompleted) {
+              return res.status(400).json({ 
+                message: "Não é possível marcar o serviço como concluído. Todas as diárias devem estar marcadas como concluídas por ambas as partes." 
+              });
+            }
+          } else {
+            return res.status(400).json({ 
+              message: "Serviço diário não possui diárias configuradas." 
+            });
+          }
+        }
         
         if (isClient) {
           updateData.clientCompletedAt = now;
         } else if (isProvider) {
           updateData.providerCompletedAt = now;
         }
-        
-        // Only mark as completed if both parties have confirmed
-        const hasClientCompleted = request.clientCompletedAt || (isClient ? now : null);
-        const hasProviderCompleted = request.providerCompletedAt || (isProvider ? now : null);
-        
+      }
+      
+      // Check if request should be marked as completed
+      const hasClientCompleted = updateData.clientCompletedAt || request.clientCompletedAt;
+      const hasProviderCompleted = updateData.providerCompletedAt || request.providerCompletedAt;
+      
+      // Determine final status
+      if (statusIsChangingToCompleted) {
         if (!hasClientCompleted || !hasProviderCompleted) {
           // Change status to 'pending_completion' if only one party has confirmed
           updateData.status = 'pending_completion';
         } else {
-          // Both parties have confirmed - add balance to provider
-          if (request.proposedPrice) {
-            const serviceAmount = parseFloat(request.proposedPrice.toString());
-            const platformFee = serviceAmount * 0.05; // 5% platform fee
-            const providerAmount = serviceAmount - platformFee;
-            
-            await storage.addToUserBalance(provider.userId, providerAmount);
-          }
+          // Both parties have confirmed - mark as completed
+          updateData.status = 'completed';
+        }
+      }
+      
+      // Add balance to provider when service is completed (check if conditions are met)
+      // Conditions: status is/will be 'completed', payment was completed, both parties confirmed, balance not added yet
+      const finalStatus = updateData.status || request.status;
+      const paymentWasCompleted = request.paymentCompletedAt != null; // Check for both null and undefined
+      const balanceNotAddedYet = !request.balanceAddedAt;
+      const bothPartiesConfirmed = hasClientCompleted && hasProviderCompleted;
+      
+      if (finalStatus === 'completed' && 
+          paymentWasCompleted && 
+          bothPartiesConfirmed && 
+          balanceNotAddedYet && 
+          request.proposedPrice) {
+        const serviceAmount = parseFloat(request.proposedPrice.toString());
+        if (!isNaN(serviceAmount) && serviceAmount > 0) {
+          const platformFee = serviceAmount * 0.05; // 5% platform fee
+          const providerAmount = serviceAmount - platformFee;
+          
+          await storage.addToUserBalance(provider.userId, providerAmount);
+          updateData.balanceAddedAt = now;
         }
       }
 
@@ -938,7 +1287,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // User can only respond if they are the client or provider of the request
       const isClient = request.clientId === req.user!.userId;
-      const isProvider = request.providerId && (await storage.getServiceProvider(request.providerId))?.userId === req.user!.userId;
+      const provider = request.providerId ? await storage.getServiceProvider(request.providerId) : null;
+      const isProvider = provider && provider.userId === req.user!.userId;
       
       if (!isClient && !isProvider) {
         return res.status(403).json({ message: "Unauthorized to respond to this negotiation" });
@@ -954,12 +1304,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // If accepted, update the request with the accepted negotiation details
       if (status === 'accepted') {
+        // Ensure proposedPrice is always set when accepting a negotiation
+        let finalProposedPrice: string | undefined = currentNegotiation.proposedPrice?.toString();
+        
+        // If proposedPrice is not set in the negotiation, calculate it based on pricing type and provider rates
+        if (!finalProposedPrice && provider) {
+          let calculatedPrice: number | null = null;
+          
+          if (currentNegotiation.pricingType === 'hourly' && provider.minHourlyRate) {
+            const minPrice = parseFloat(provider.minHourlyRate.toString());
+            if (currentNegotiation.proposedHours) {
+              calculatedPrice = currentNegotiation.proposedHours * minPrice;
+            } else if (request.proposedHours) {
+              calculatedPrice = request.proposedHours * minPrice;
+            }
+          } else if (currentNegotiation.pricingType === 'daily' && provider.minDailyRate) {
+            const minPrice = parseFloat(provider.minDailyRate.toString());
+            if (currentNegotiation.proposedDays) {
+              calculatedPrice = currentNegotiation.proposedDays * minPrice;
+            } else if (request.proposedDays) {
+              calculatedPrice = request.proposedDays * minPrice;
+            }
+          } else if (currentNegotiation.pricingType === 'fixed' && provider.minFixedRate) {
+            calculatedPrice = parseFloat(provider.minFixedRate.toString());
+          }
+          
+          if (calculatedPrice && calculatedPrice > 0) {
+            finalProposedPrice = calculatedPrice.toString();
+          }
+        }
+        
+        // Fallback to request's proposedPrice if negotiation doesn't have one and we couldn't calculate it
+        if (!finalProposedPrice && request.proposedPrice) {
+          finalProposedPrice = request.proposedPrice.toString();
+        }
+        
         await storage.updateServiceRequest(currentNegotiation.requestId, {
           status: 'payment_pending', // Change to payment_pending instead of accepted
-          proposedPrice: currentNegotiation.proposedPrice || undefined,
-          proposedHours: currentNegotiation.proposedHours || undefined,
-          proposedDays: currentNegotiation.proposedDays || undefined,
-          scheduledDate: currentNegotiation.proposedDate || undefined,
+          proposedPrice: finalProposedPrice || undefined,
+          proposedHours: currentNegotiation.proposedHours || request.proposedHours || undefined,
+          proposedDays: currentNegotiation.proposedDays || request.proposedDays || undefined,
+          scheduledDate: currentNegotiation.proposedDate || request.scheduledDate || undefined,
           pricingType: currentNegotiation.pricingType,
         });
       }
@@ -1052,6 +1437,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate required fields
       if (!validatedData.pricingType || !validatedData.message) {
         return res.status(400).json({ message: "pricingType and message are required" });
+      }
+
+      // Validar data/hora se fornecida
+      if (validatedData.proposedDate) {
+        const dateValidation = validateFutureDateTime(validatedData.proposedDate);
+        if (!dateValidation.isValid) {
+          return res.status(400).json({ message: dateValidation.errorMessage });
+        }
       }
       
       // Create a new negotiation as a counter proposal

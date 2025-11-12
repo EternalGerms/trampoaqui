@@ -1,17 +1,20 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
-import { log } from "./vite";
+import { log, setupVite, serveStatic } from "./vite";
 import { testConnection } from "./db";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Request logging middleware - log ALL requests for debugging
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
+
+  console.log(`[Request] ${req.method} ${req.originalUrl} - IP: ${req.ip || req.connection.remoteAddress || 'unknown'}`);
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
@@ -32,7 +35,15 @@ app.use((req, res, next) => {
       }
 
       log(logLine);
+    } else {
+      // Log non-API requests too for debugging
+      console.log(`[Request] ${req.method} ${path} ${res.statusCode} in ${duration}ms`);
     }
+  });
+
+  // Error handler for this request
+  res.on("error", (err) => {
+    console.error(`[Request Error] ${req.method} ${req.originalUrl}:`, err);
   });
 
   next();
@@ -46,6 +57,31 @@ app.use((req, res, next) => {
   const server = await registerRoutes(app);
   console.log('🔄 [DEBUG] Routes registered successfully');
 
+  // Set up frontend serving based on environment
+  // This must be done AFTER routes are registered but BEFORE error handler
+  if (process.env.NODE_ENV === 'production') {
+    console.log('🔄 [DEBUG] Setting up static file serving...');
+    serveStatic(app);
+    console.log('🔄 [DEBUG] Static file serving configured');
+  } else {
+    console.log('🔄 [DEBUG] Setting up Vite dev server...');
+    await setupVite(app, server);
+    console.log('🔄 [DEBUG] Vite dev server configured');
+  }
+
+  // Final catch-all for any unmatched routes (shouldn't be needed, but safety net)
+  app.use((req, res, next) => {
+    if (req.originalUrl.startsWith("/api")) {
+      return next();
+    }
+    // If we get here and no response was sent, something went wrong
+    if (!res.headersSent) {
+      console.log(`[Final Catch-all] Unhandled route: ${req.method} ${req.originalUrl}`);
+      next(); // Let error handler deal with it
+    }
+  });
+
+  // Error handler must be last
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
@@ -69,11 +105,11 @@ app.use((req, res, next) => {
     }
   });
 
-  server.listen({
-    port,
-    host: "127.0.0.1",
-  }, () => {
-    log(`serving on port ${port}`);
+  // Listen on 0.0.0.0 in Docker/production to accept external connections
+  // Use 127.0.0.1 in development for security
+  const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1';
+  server.listen(port, host, () => {
+    log(`serving on ${host}:${port}`);
   });
 
   // Graceful shutdown

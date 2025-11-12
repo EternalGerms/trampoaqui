@@ -1,12 +1,17 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function EmailVerifiedPage() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
+  const [resendEmail, setResendEmail] = useState('');
+  const [isResending, setIsResending] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     const verifyEmail = async () => {
@@ -40,6 +45,55 @@ export default function EmailVerifiedPage() {
 
     verifyEmail();
   }, []);
+
+  const handleResendVerification = async () => {
+    const emailValue = resendEmail.trim();
+
+    if (!emailValue) {
+      toast({
+        title: "Informe seu email",
+        description: "Digite o email que deseja verificar para reenviar a confirmação.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsResending(true);
+    try {
+      const response = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: emailValue }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        toast({
+          title: "Email reenviado!",
+          description: data.message ?? "Verifique sua caixa de entrada (incluindo a pasta de spam).",
+        });
+        setStatus('success');
+      } else {
+        toast({
+          title: "Não foi possível reenviar",
+          description: data.message ?? "Tente novamente em alguns instantes.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Erro ao reenviar verificação:", error);
+      toast({
+        title: "Erro inesperado",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsResending(false);
+    }
+  };
 
   if (status === 'loading') {
     return (
@@ -76,9 +130,27 @@ export default function EmailVerifiedPage() {
             <p className="mb-6 text-gray-600">
               O link de verificação pode estar expirado ou inválido.
             </p>
-            <Link href="/login">
-              <Button>Ir para o Login</Button>
-            </Link>
+            <div className="space-y-3">
+              <Input
+                type="email"
+                placeholder="Digite seu email para reenviar"
+                value={resendEmail}
+                onChange={(event) => setResendEmail(event.target.value)}
+              />
+              <Button
+                className="w-full"
+                onClick={handleResendVerification}
+                disabled={isResending}
+              >
+                {isResending ? "Reenviando..." : "Reenviar email de verificação"}
+              </Button>
+              <p className="text-xs text-gray-500">
+                Ainda com problemas?{" "}
+                <Link href="/login" className="text-primary-600 hover:text-primary-700 font-medium">
+                  Voltar para o login
+                </Link>
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>

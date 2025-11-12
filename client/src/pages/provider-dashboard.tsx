@@ -20,11 +20,8 @@ import {
   User, 
   Star, 
   MessageCircle,
-  
-  
-  
+  Calendar,
   Clock,
-  
   CheckCircle,
   XCircle,
   AlertCircle,
@@ -110,6 +107,17 @@ const counterProposalSchema = z.object({
   return true; // This will be validated in the submit handler
 }, {
   message: "Você deve alterar pelo menos um campo para enviar uma contraproposta",
+}).refine((data) => {
+  // Validar data/hora se fornecida
+  if (data.proposedDate && data.proposedTime) {
+    const dateTime = new Date(`${data.proposedDate}T${data.proposedTime}:00`);
+    const now = new Date();
+    return dateTime > now;
+  }
+  return true;
+}, {
+  message: "A data e horário devem ser no futuro",
+  path: ["proposedDate"]
 });
 
 const reviewSchema = z.object({
@@ -161,8 +169,17 @@ type ProviderWithDetails = ServiceProvider & {
   reviewCount: number 
 };
 
+type DailySession = {
+  day: number;
+  scheduledDate: Date | string;
+  scheduledTime: string;
+  clientCompleted: boolean;
+  providerCompleted: boolean;
+};
+
 type RequestWithClient = ServiceRequest & {
   client: { id: string; name: string; email: string };
+  dailySessions?: DailySession[];
   negotiations?: Array<{
     id: string;
     proposerId: string;
@@ -187,6 +204,7 @@ type RequestWithClient = ServiceRequest & {
   }>;
   clientCompletedAt?: string | null;
   providerCompletedAt?: string | null;
+  paymentCompletedAt?: string | null;
 };
 
 type ClientRequest = ServiceRequest & {
@@ -1157,7 +1175,7 @@ export default function ProviderDashboard() {
                                     <p className="text-gray-700 mb-3">{request.description}</p>
                                     
                                     {/* Enhanced request details */}
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 p-3 bg-gray-50 rounded-lg">
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4 p-3 bg-gray-50 rounded-lg">
                                       <div>
                                         <p className="text-xs text-gray-500 font-medium">Tipo de Orçamento</p>
                                         <p className="text-sm font-medium text-gray-900 capitalize">
@@ -1167,10 +1185,33 @@ export default function ProviderDashboard() {
                                       </div>
                                       
                                       {request.proposedPrice && (
-                                        <div>
-                                          <p className="text-xs text-gray-500 font-medium">Orçamento</p>
-                                          <p className="text-sm font-medium text-green-600">R$ {request.proposedPrice}</p>
-                                        </div>
+                                        <>
+                                          <div>
+                                            <p className="text-xs text-gray-500 font-medium">Valor Final</p>
+                                            <p className="text-sm font-medium text-green-600">
+                                              R$ {parseFloat(request.proposedPrice.toString()).toFixed(2).replace('.', ',')}
+                                              {request.pricingType === 'hourly' && request.proposedHours && (
+                                                <span className="text-xs text-gray-500 ml-1">
+                                                  ({request.proposedHours}h)
+                                                </span>
+                                              )}
+                                              {request.pricingType === 'daily' && request.proposedDays && (
+                                                <span className="text-xs text-gray-500 ml-1">
+                                                  ({request.proposedDays} dias)
+                                                </span>
+                                              )}
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500 font-medium">Valor Líquido</p>
+                                            <p className="text-sm font-medium text-blue-600">
+                                              R$ {(parseFloat(request.proposedPrice.toString()) * 0.95).toFixed(2).replace('.', ',')}
+                                              <span className="text-xs text-gray-500 ml-1 block">
+                                                (taxa 5%)
+                                              </span>
+                                            </p>
+                                          </div>
+                                        </>
                                       )}
                                       
                                       {request.proposedHours && (
@@ -1188,7 +1229,7 @@ export default function ProviderDashboard() {
                                       )}
                                       
                                       {request.scheduledDate && (
-                                        <div className="md:col-span-2">
+                                        <div className="md:col-span-5">
                                           <p className="text-xs text-gray-500 font-medium">Data e Horário Agendado</p>
                                           <p className="text-sm font-medium text-blue-600">
                                             {formatDateTime(request.scheduledDate)}
@@ -1201,6 +1242,103 @@ export default function ProviderDashboard() {
                                       <span>Solicitado em: {new Date(request.createdAt).toLocaleDateString('pt-BR')}</span>
                                     </div>
                                     
+                                    {/* Daily Sessions for daily services */}
+                                    {request.pricingType === 'daily' && request.dailySessions && Array.isArray(request.dailySessions) && request.dailySessions.length > 0 && (
+                                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-3">
+                                        <h4 className="font-medium text-purple-900 mb-3 flex items-center gap-2">
+                                          <Calendar className="w-4 h-4" />
+                                          Dias do Serviço ({request.dailySessions.length})
+                                        </h4>
+                                        {/* Verificar se pode marcar dias como concluídos */}
+                                        {(() => {
+                                          const canMarkDays = (request.status === 'pending_completion' || 
+                                                              (request.status === 'accepted' && request.paymentCompletedAt));
+                                          
+                                          if (!canMarkDays) {
+                                            let message = "";
+                                            if (request.status === 'pending') {
+                                              message = "Aguarde aceitar a solicitação e o pagamento ser confirmado.";
+                                            } else if (request.status === 'payment_pending') {
+                                              message = "Aguarde o pagamento ser confirmado para marcar os dias como concluídos.";
+                                            } else if (request.status === 'cancelled' || request.status === 'rejected') {
+                                              message = "Este serviço foi cancelado ou recusado.";
+                                            } else {
+                                              // Para outros status que não permitem marcação, não exibir mensagem
+                                              return null;
+                                            }
+                                            return (
+                                              <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-3">
+                                                <p className="text-sm text-yellow-800">{message}</p>
+                                              </div>
+                                            );
+                                          }
+                                          
+                                          return null;
+                                        })()}
+                                        {(() => {
+                                          const canMarkDays = (request.status === 'pending_completion' || 
+                                                              (request.status === 'accepted' && request.paymentCompletedAt));
+                                          
+                                          return (
+                                            <div className="space-y-2">
+                                              {request.dailySessions.map((session, index) => {
+                                                const sessionDate = typeof session.scheduledDate === 'string' ? new Date(session.scheduledDate) : session.scheduledDate;
+                                                return (
+                                                  <div key={index} className="bg-white border border-purple-200 rounded p-3">
+                                                    <div className="flex items-center justify-between">
+                                                      <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                          <span className="font-medium text-sm">Dia {session.day}</span>
+                                                          <span className="text-xs text-gray-500">
+                                                            {sessionDate.toLocaleDateString('pt-BR')} às {session.scheduledTime}
+                                                          </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-4 text-xs text-gray-600">
+                                                          <span className={session.clientCompleted ? 'text-green-600' : 'text-gray-400'}>
+                                                            Cliente: {session.clientCompleted ? '✓ Concluído' : 'Pendente'}
+                                                          </span>
+                                                          <span className={session.providerCompleted ? 'text-green-600' : 'text-gray-400'}>
+                                                            Prestador: {session.providerCompleted ? '✓ Concluído' : 'Pendente'}
+                                                          </span>
+                                                        </div>
+                                                      </div>
+                                                      {!session.providerCompleted && canMarkDays && (
+                                                        <Button
+                                                          size="sm"
+                                                          variant="outline"
+                                                          onClick={async () => {
+                                                            try {
+                                                              const response = await authenticatedRequest('PUT', `/api/requests/${request.id}/daily-session/${index}`, {
+                                                                completed: true
+                                                              });
+                                                              await response.json();
+                                                              queryClient.invalidateQueries({ queryKey: ["/api/requests/provider"] });
+                                                              toast({
+                                                                title: "Dia marcado como concluído!",
+                                                                description: "O cliente também precisa confirmar para finalizar este dia.",
+                                                              });
+                                                            } catch (error: any) {
+                                                              toast({
+                                                                title: "Erro",
+                                                                description: error.message || "Não foi possível marcar o dia como concluído.",
+                                                                variant: "destructive",
+                                                              });
+                                                            }
+                                                          }}
+                                                        >
+                                                          Marcar como Concluído
+                                                        </Button>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          );
+                                        })()}
+                                      </div>
+                                    )}
+
                                     {/* Show negotiations if they exist */}
                                     {request.negotiations && request.negotiations.length > 0 && (
                                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
@@ -1676,7 +1814,8 @@ export default function ProviderDashboard() {
                                       </div>
                                     )}
                                     
-                                    {(request.status === 'accepted' || request.status === 'pending_completion') && !request.providerCompletedAt && (
+                                    {/* Para serviços diários, não mostrar este botão - a conclusão é feita através das diárias individuais */}
+                                    {(request.status === 'accepted' || request.status === 'pending_completion') && !request.providerCompletedAt && request.pricingType !== 'daily' && (
                                       <AlertDialog>
                                         <AlertDialogTrigger asChild>
                                           <Button 

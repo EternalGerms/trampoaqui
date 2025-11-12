@@ -47,6 +47,17 @@ const requestSchema = z.object({
 }, {
   message: "Preço deve ser maior que zero",
   path: ["proposedPrice"]
+}).refine((data) => {
+  // Validar data/hora se fornecida
+  if (data.scheduledDate && data.scheduledTime) {
+    const dateTime = new Date(`${data.scheduledDate}T${data.scheduledTime}:00`);
+    const now = new Date();
+    return dateTime > now;
+  }
+  return true;
+}, {
+  message: "A data e horário devem ser no futuro",
+  path: ["scheduledDate"]
 });
 
 
@@ -178,6 +189,36 @@ export default function ProviderProfile() {
 
   const createRequestMutation = useMutation({
     mutationFn: async (data: RequestForm) => {
+      // Validar preço mínimo antes de enviar
+      if (provider) {
+        let minPrice: number | null = null;
+        let calculatedPrice: number | null = null;
+
+        if (data.pricingType === 'hourly' && provider.minHourlyRate) {
+          minPrice = parseFloat(provider.minHourlyRate.toString());
+          if (data.proposedHours) {
+            calculatedPrice = parseInt(data.proposedHours) * minPrice;
+          }
+        } else if (data.pricingType === 'daily' && provider.minDailyRate) {
+          minPrice = parseFloat(provider.minDailyRate.toString());
+          if (data.proposedDays) {
+            calculatedPrice = parseInt(data.proposedDays) * minPrice;
+          }
+        } else if (data.pricingType === 'fixed' && provider.minFixedRate) {
+          minPrice = parseFloat(provider.minFixedRate.toString());
+        }
+
+        // Validar proposedPrice se fornecido
+        if (data.proposedPrice && minPrice) {
+          const proposedPriceValue = parseFloat(data.proposedPrice);
+          const priceToCompare = calculatedPrice || minPrice;
+          
+          if (proposedPriceValue < priceToCompare) {
+            throw new Error(`O preço proposto (R$ ${proposedPriceValue.toFixed(2)}) deve ser maior ou igual ao valor mínimo de R$ ${priceToCompare.toFixed(2)}`);
+          }
+        }
+      }
+
       const payload = {
         title: data.title,
         description: data.description,

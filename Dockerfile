@@ -8,7 +8,9 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install all dependencies (including dev dependencies for build)
-RUN npm ci && npm cache clean --force
+# Fix for rollup optional dependencies on Linux - install explicitly after npm ci
+RUN npm ci && \
+    npm install @rollup/rollup-linux-x64-gnu --save-optional --force
 
 # Copy configuration files
 COPY tsconfig.json ./

@@ -76,6 +76,15 @@ const registerSchema = z.object({
   number: z.string().optional(),
   hasNumber: z.boolean().default(true),
   complement: z.string().optional(),
+}).refine((data) => {
+  // Se hasNumber é true, o campo number deve estar preenchido
+  if (data.hasNumber && (!data.number || data.number.trim() === '')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "O número do endereço é obrigatório quando o endereço possui número",
+  path: ["number"],
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;

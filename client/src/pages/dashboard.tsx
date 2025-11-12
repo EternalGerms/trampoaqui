@@ -49,16 +49,29 @@ interface Review {
   createdAt: Date;
 }
 
+interface DailySession {
+  day: number;
+  scheduledDate: Date | string;
+  scheduledTime: string;
+  clientCompleted: boolean;
+  providerCompleted: boolean;
+}
+
 interface ServiceRequest {
   id: string;
   title: string;
   description: string;
   status: string;
+  pricingType: string;
   proposedPrice: string;
+  proposedHours?: number | null;
+  proposedDays?: number | null;
   scheduledDate: string;
+  dailySessions?: DailySession[];
   createdAt: string;
   clientCompletedAt?: string;
   providerCompletedAt?: string;
+  paymentCompletedAt?: string;
   provider: {
     id: string;
     user: {
@@ -108,6 +121,17 @@ export default function Dashboard() {
     proposedDate: z.string().optional(),
     proposedTime: z.string().optional(),
     message: z.string().min(10, "Mensagem deve ter pelo menos 10 caracteres"),
+  }).refine((data) => {
+    // Validar data/hora se fornecida
+    if (data.proposedDate && data.proposedTime) {
+      const dateTime = new Date(`${data.proposedDate}T${data.proposedTime}:00`);
+      const now = new Date();
+      return dateTime > now;
+    }
+    return true;
+  }, {
+    message: "A data e horário devem ser no futuro",
+    path: ["proposedDate"]
   });
 
   const counterProposalForm = useForm<z.infer<typeof counterProposalSchema>>({
@@ -295,6 +319,52 @@ export default function Dashboard() {
 
   const handleCompletePayment = (requestId: string) => {
     completePaymentMutation.mutate(requestId);
+  };
+
+  // Function to get payment amount from request or accepted negotiation
+  const getPaymentAmount = (request: ServiceRequest): number | null => {
+    // First, try to get the proposedPrice from the request
+    if (request.proposedPrice) {
+      const price = parseFloat(request.proposedPrice.toString());
+      if (!isNaN(price) && price > 0) {
+        return price;
+      }
+    }
+
+    // If proposedPrice is not available or invalid, check for accepted negotiations
+    if (request.negotiations && request.negotiations.length > 0) {
+      // Sort negotiations by creation date (most recent first)
+      const sortedNegotiations = [...request.negotiations].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      // Find the most recent accepted negotiation
+      const acceptedNegotiation = sortedNegotiations.find(
+        (n) => n.status === 'accepted' && n.proposedPrice
+      );
+
+      if (acceptedNegotiation && acceptedNegotiation.proposedPrice) {
+        const price = parseFloat(acceptedNegotiation.proposedPrice.toString());
+        if (!isNaN(price) && price > 0) {
+          return price;
+        }
+      }
+
+      // If no accepted negotiation, try the most recent negotiation with a price
+      const latestNegotiationWithPrice = sortedNegotiations.find(
+        (n) => n.proposedPrice
+      );
+
+      if (latestNegotiationWithPrice && latestNegotiationWithPrice.proposedPrice) {
+        const price = parseFloat(latestNegotiationWithPrice.proposedPrice.toString());
+        if (!isNaN(price) && price > 0) {
+          return price;
+        }
+      }
+    }
+
+    // No valid price found
+    return null;
   };
 
   // Function to get display status text considering the actual request status
@@ -536,7 +606,17 @@ export default function Dashboard() {
                                   </span>
                                   {request.proposedPrice && (
                                     <span className="font-medium text-green-600">
-                                      R$ {parseFloat(request.proposedPrice).toFixed(2).replace('.', ',')}
+                                      Valor Final: R$ {parseFloat(request.proposedPrice).toFixed(2).replace('.', ',')}
+                                      {request.pricingType === 'hourly' && request.proposedHours && (
+                                        <span className="text-xs text-gray-500 ml-1">
+                                          ({request.proposedHours}h)
+                                        </span>
+                                      )}
+                                      {request.pricingType === 'daily' && request.proposedDays && (
+                                        <span className="text-xs text-gray-500 ml-1">
+                                          ({request.proposedDays} dias)
+                                        </span>
+                                      )}
                                     </span>
                                   )}
                                   {request.scheduledDate && (
@@ -590,6 +670,100 @@ export default function Dashboard() {
                                   </div>
                                 )}
 
+                                {/* Daily Sessions for daily services */}
+                                {request.pricingType === 'daily' && request.dailySessions && Array.isArray(request.dailySessions) && request.dailySessions.length > 0 && (
+                                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-3">
+                                    <h4 className="font-medium text-purple-900 mb-3 flex items-center gap-2">
+                                      <Calendar className="w-4 h-4" />
+                                      Dias do Serviço ({request.dailySessions.length})
+                                    </h4>
+                                    {/* Verificar se pode marcar dias como concluídos */}
+                                    {(() => {
+                                      const canMarkDays = (request.status === 'pending_completion' || 
+                                                          (request.status === 'accepted' && request.paymentCompletedAt));
+                                      
+                                      if (!canMarkDays) {
+                                        let message = "Aguarde o pagamento ser confirmado para marcar os dias como concluídos.";
+                                        if (request.status === 'pending') {
+                                          message = "Aguarde o prestador aceitar a solicitação.";
+                                        } else if (request.status === 'payment_pending') {
+                                          message = "Aguarde o pagamento ser confirmado para marcar os dias como concluídos.";
+                                        } else if (request.status === 'cancelled' || request.status === 'rejected') {
+                                          message = "Este serviço foi cancelado ou recusado.";
+                                        }
+                                        return (
+                                          <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-3">
+                                            <p className="text-sm text-yellow-800">{message}</p>
+                                          </div>
+                                        );
+                                      }
+                                      
+                                      return null;
+                                    })()}
+                                    {(() => {
+                                      const canMarkDays = (request.status === 'pending_completion' || 
+                                                          (request.status === 'accepted' && request.paymentCompletedAt));
+                                      
+                                      return (
+                                        <div className="space-y-2">
+                                          {request.dailySessions.map((session, index) => {
+                                            const sessionDate = typeof session.scheduledDate === 'string' ? new Date(session.scheduledDate) : session.scheduledDate;
+                                            return (
+                                              <div key={index} className="bg-white border border-purple-200 rounded p-3">
+                                                <div className="flex items-center justify-between">
+                                                  <div className="flex-1">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                      <span className="font-medium text-sm">Dia {session.day}</span>
+                                                      <span className="text-xs text-gray-500">
+                                                        {sessionDate.toLocaleDateString('pt-BR')} às {session.scheduledTime}
+                                                      </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-4 text-xs text-gray-600">
+                                                      <span className={session.clientCompleted ? 'text-green-600' : 'text-gray-400'}>
+                                                        Cliente: {session.clientCompleted ? '✓ Concluído' : 'Pendente'}
+                                                      </span>
+                                                      <span className={session.providerCompleted ? 'text-green-600' : 'text-gray-400'}>
+                                                        Prestador: {session.providerCompleted ? '✓ Concluído' : 'Pendente'}
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                  {!session.clientCompleted && canMarkDays && (
+                                                    <Button
+                                                      size="sm"
+                                                      variant="outline"
+                                                      onClick={async () => {
+                                                        try {
+                                                          const response = await apiRequest('PUT', `/api/requests/${request.id}/daily-session/${index}`, {
+                                                            completed: true
+                                                          });
+                                                          await response.json();
+                                                          queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
+                                                          toast({
+                                                            title: "Dia marcado como concluído!",
+                                                            description: "O prestador também precisa confirmar para finalizar este dia.",
+                                                          });
+                                                        } catch (error: any) {
+                                                          toast({
+                                                            title: "Erro",
+                                                            description: error.message || "Não foi possível marcar o dia como concluído.",
+                                                            variant: "destructive",
+                                                          });
+                                                        }
+                                                      }}
+                                                    >
+                                                      Marcar como Concluído
+                                                    </Button>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                )}
+
                                 {/* Action buttons based on status */}
                                 <div className="flex gap-2">
                                   {/* Only show counter proposal button when there are negotiations in progress */}
@@ -612,6 +786,15 @@ export default function Dashboard() {
                                     <Button
                                       size="sm"
                                       onClick={() => {
+                                        const paymentAmount = getPaymentAmount(request);
+                                        if (paymentAmount === null || paymentAmount <= 0) {
+                                          toast({
+                                            title: "Erro ao obter valor do pagamento",
+                                            description: "Não foi possível determinar o valor a ser pago. Por favor, entre em contato com o suporte.",
+                                            variant: "destructive",
+                                          });
+                                          return;
+                                        }
                                         setSelectedRequestForPayment(request);
                                         setShowPaymentDialog(true);
                                       }}
@@ -625,7 +808,8 @@ export default function Dashboard() {
 
                                   
                                   {/* Show "Marcar como Concluído" button when service is accepted or pending completion and client has not confirmed yet */}
-                                  {(request.status === 'accepted' || request.status === 'pending_completion') && !request.clientCompletedAt && (
+                                  {/* Para serviços diários, não mostrar este botão - a conclusão é feita através das diárias individuais */}
+                                  {(request.status === 'accepted' || request.status === 'pending_completion') && !request.clientCompletedAt && request.pricingType !== 'daily' && (
                                     <AlertDialog>
                                       <AlertDialogTrigger asChild>
                                         <Button
@@ -818,17 +1002,24 @@ export default function Dashboard() {
       )}
 
       {/* Payment Dialog */}
-      {selectedRequestForPayment && (
-        <PaymentDialog
-          isOpen={showPaymentDialog}
-          onClose={() => {
-            setShowPaymentDialog(false);
-            setSelectedRequestForPayment(null);
-          }}
-          onPaymentMethodSelected={handlePaymentMethodSelected}
-          amount={parseFloat(selectedRequestForPayment.proposedPrice || '0')}
-        />
-      )}
+      {selectedRequestForPayment && (() => {
+        const paymentAmount = getPaymentAmount(selectedRequestForPayment);
+        // Only render if we have a valid payment amount
+        if (paymentAmount !== null && paymentAmount > 0) {
+          return (
+            <PaymentDialog
+              isOpen={showPaymentDialog}
+              onClose={() => {
+                setShowPaymentDialog(false);
+                setSelectedRequestForPayment(null);
+              }}
+              onPaymentMethodSelected={handlePaymentMethodSelected}
+              amount={paymentAmount}
+            />
+          );
+        }
+        return null;
+      })()}
       
       <Footer />
     </div>
