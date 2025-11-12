@@ -34,10 +34,14 @@ export default function Login() {
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     try {
-      await authManager.login(data.email, data.password);
+      const authResponse = await authManager.login(data.email, data.password);
+      const isEmailVerified = authResponse?.user?.emailVerified ?? false;
+
       toast({
         title: "Login realizado com sucesso!",
-        description: "Bem-vindo de volta.",
+        description: isEmailVerified
+          ? "Bem-vindo de volta."
+          : "Bem-vindo de volta! Confirme seu e-mail para aproveitar todos os recursos.",
       });
       setLocation("/");
     } catch (error) {
@@ -50,6 +54,7 @@ export default function Login() {
       setIsLoading(false);
     }
   };
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">

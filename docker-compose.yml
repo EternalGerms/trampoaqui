@@ -30,10 +30,15 @@ services:
       dockerfile: Dockerfile
     container_name: trampoaqui-api
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
+      # NODE_ENV sempre será production no container
       NODE_ENV: production
+      # As demais variáveis (EMAIL_*, DATABASE_URL, JWT_SECRET, PORT, FRONTEND_URL, APP_URL, APP_NAME)
+      # serão carregadas do arquivo .env através do env_file acima
+      # Estas variáveis abaixo são apenas fallback caso não existam no .env
       DATABASE_URL: postgresql://trampoaqui:trampoaqui123@postgres:5432/trampoaqui
-      JWT_SECRET: your-super-secret-jwt-key-change-this-in-production
       PORT: 5000
     ports:
       - "5000:5000"
@@ -58,6 +63,8 @@ services:
       dockerfile: Dockerfile.dev
     container_name: trampoaqui-dev
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://trampoaqui:trampoaqui123@postgres:5432/trampoaqui

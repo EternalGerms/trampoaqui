@@ -14,6 +14,7 @@ import ProviderDashboard from "@/pages/provider-dashboard";
 import CompleteProfile from "@/pages/complete-profile";
 import AdminDashboard from "@/pages/admin-dashboard";
 import NotFound from "@/pages/not-found";
+import EmailVerifiedPage from "@/pages/email-verified";
 
 function Router() {
   return (
@@ -22,6 +23,8 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/services" component={Services} />
+      <Route path="/verify-email" component={EmailVerifiedPage} />
+      <Route path="/email-verified" component={EmailVerifiedPage} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/profile/:id" component={Profile} />
       <Route path="/provider/:id" component={ProviderProfile} />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,11 +20,8 @@ import {
   User, 
   Star, 
   MessageCircle,
-  
-  
-  
+  Calendar,
   Clock,
-  
   CheckCircle,
   XCircle,
   AlertCircle,
@@ -38,7 +35,9 @@ import {
 } from "lucide-react";
 import { authManager, authenticatedRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { useMutationWithToast } from "@/hooks/useMutationWithToast";
+import { formatCurrency, formatDate, formatDateTime, formatTime } from "@/utils/format";
+import { BRAZILIAN_STATES } from "@/constants/brazilianStates";
 import ClientReviewDialog from "@/components/client-review-dialog";
 import { 
   ServiceProvider, 
@@ -46,45 +45,6 @@ import {
   ServiceCategory, 
   insertServiceProviderSchema 
 } from "@shared/schema";
-
-// Lista dos estados brasileiros
-const BRAZILIAN_STATES = [
-  { value: "AC", label: "Acre" },
-  { value: "AL", label: "Alagoas" },
-  { value: "AP", label: "Amapá" },
-  { value: "AM", label: "Amazonas" },
-  { value: "BA", label: "Bahia" },
-  { value: "CE", label: "Ceará" },
-  { value: "DF", label: "Distrito Federal" },
-  { value: "ES", label: "Espírito Santo" },
-  { value: "GO", label: "Goiás" },
-  { value: "MA", label: "Maranhão" },
-  { value: "MT", label: "Mato Grosso" },
-  { value: "MS", label: "Mato Grosso do Sul" },
-  { value: "MG", label: "Minas Gerais" },
-  { value: "PA", label: "Pará" },
-  { value: "PB", label: "Paraíba" },
-  { value: "PR", label: "Paraná" },
-  { value: "PE", label: "Pernambuco" },
-  { value: "PI", label: "Piauí" },
-  { value: "RJ", label: "Rio de Janeiro" },
-  { value: "RN", label: "Rio Grande do Norte" },
-  { value: "RS", label: "Rio Grande do Sul" },
-  { value: "RO", label: "Rondônia" },
-  { value: "RR", label: "Roraima" },
-  { value: "SC", label: "Santa Catarina" },
-  { value: "SP", label: "São Paulo" },
-  { value: "SE", label: "Sergipe" },
-  { value: "TO", label: "Tocantins" }
-];
-
-const updateProviderSchema = z.object({
-  bio: z.string().optional(),
-  experience: z.string().min(10, "Experiência deve ter pelo menos 10 caracteres"),
-  city: z.string().min(2, "Cidade deve ter pelo menos 2 caracteres"),
-  state: z.string().min(2, "Estado é obrigatório"),
-  location: z.string().optional(), // Campo para compatibilidade com o backend
-});
 
 const newServiceSchema = z.object({
   categoryId: z.string().min(1, "Selecione uma categoria"),
@@ -110,6 +70,17 @@ const counterProposalSchema = z.object({
   return true; // This will be validated in the submit handler
 }, {
   message: "Você deve alterar pelo menos um campo para enviar uma contraproposta",
+}).refine((data) => {
+  // Validar data/hora se fornecida
+  if (data.proposedDate && data.proposedTime) {
+    const dateTime = new Date(`${data.proposedDate}T${data.proposedTime}:00`);
+    const now = new Date();
+    return dateTime > now;
+  }
+  return true;
+}, {
+  message: "A data e horário devem ser no futuro",
+  path: ["proposedDate"]
 });
 
 const reviewSchema = z.object({
@@ -117,39 +88,6 @@ const reviewSchema = z.object({
   comment: z.string().min(10, "Comentário deve ter pelo menos 10 caracteres"),
 });
 
-// Função para validar cidade e estado
-const validateCityState = async (location: string): Promise<boolean> => {
-  if (!location) return true;
-  
-  // Extrair cidade e estado da localização (formato: "Cidade - Estado")
-  const parts = location.split(' - ');
-  if (parts.length !== 2) return true; // Se não estiver no formato esperado, permitir
-  
-  const city = parts[0].trim();
-  const state = parts[1].trim();
-  
-  if (!city || !state) return true;
-  
-  try {
-    // Usar a API do IBGE para validar cidade e estado
-    const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${state.toUpperCase()}/municipios`);
-    const cities = await response.json();
-    
-    const cityExists = cities.some((c: any) => 
-      c.nome.toLowerCase() === city.toLowerCase()
-    );
-    
-    if (!cityExists) {
-      return false;
-    }
-    
-    return true;
-  } catch (error) {
-    return true;
-  }
-};
-
-type UpdateProviderForm = z.infer<typeof updateProviderSchema>;
 type NewServiceForm = z.infer<typeof newServiceSchema>;
 type CounterProposalForm = z.infer<typeof counterProposalSchema>;
 type ReviewForm = z.infer<typeof reviewSchema>;
@@ -161,8 +99,17 @@ type ProviderWithDetails = ServiceProvider & {
   reviewCount: number 
 };
 
+type DailySession = {
+  day: number;
+  scheduledDate: Date | string;
+  scheduledTime: string;
+  clientCompleted: boolean;
+  providerCompleted: boolean;
+};
+
 type RequestWithClient = ServiceRequest & {
   client: { id: string; name: string; email: string };
+  dailySessions?: DailySession[];
   negotiations?: Array<{
     id: string;
     proposerId: string;
@@ -187,6 +134,7 @@ type RequestWithClient = ServiceRequest & {
   }>;
   clientCompletedAt?: string | null;
   providerCompletedAt?: string | null;
+  paymentCompletedAt?: string | null;
 };
 
 type ClientRequest = ServiceRequest & {
@@ -227,7 +175,6 @@ type ClientRequest = ServiceRequest & {
 export default function ProviderDashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [editingProfile, setEditingProfile] = useState(false);
   const [counterProposalRequestId, setCounterProposalRequestId] = useState<string | null>(null);
   const [reviewRequestId, setReviewRequestId] = useState<string | null>(null);
   const [revieweeId, setRevieweeId] = useState<string | null>(null);
@@ -282,19 +229,6 @@ export default function ProviderDashboard() {
     },
   });
 
-
-  
-
-  const form = useForm<UpdateProviderForm>({
-    resolver: zodResolver(updateProviderSchema),
-    defaultValues: {
-      bio: provider?.user?.bio || "",
-      experience: provider?.experience || "",
-      city: provider?.user?.city || "",
-      state: provider?.user?.state || "",
-    },
-  });
-
   const newServiceForm = useForm<NewServiceForm>({
     resolver: zodResolver(newServiceSchema),
     defaultValues: {
@@ -330,45 +264,7 @@ export default function ProviderDashboard() {
     },
   });
 
-  // Reset form when provider data loads
-  useEffect(() => {
-    if (provider) {
-      form.reset({
-        bio: provider.user?.bio || "",
-        experience: provider.experience || "",
-        city: provider.user?.city || "",
-        state: provider.user?.state || "",
-      });
-    }
-  }, [provider, form]);
-
-  const updateProviderMutation = useMutation({
-    mutationFn: async (data: UpdateProviderForm) => {
-      // Update user profile (bio, experience, location)
-      const response = await authenticatedRequest('PUT', `/api/users/profile`, {
-        ...data,
-        userId: user?.id,
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Perfil atualizado!",
-        description: "Suas informações foram salvas com sucesso.",
-      });
-      setEditingProfile(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao atualizar perfil",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const createNewServiceMutation = useMutation({
+  const createNewServiceMutation = useMutationWithToast({
     mutationFn: async (data: NewServiceForm) => {
       const { city, state, ...serviceData } = data;
       const location = `${city} - ${state}`;
@@ -379,11 +275,12 @@ export default function ProviderDashboard() {
       });
       return response.json();
     },
+    successMessage: "Novo serviço criado!",
+    successDescription: "Seu serviço foi adicionado com sucesso.",
+    errorMessage: "Erro ao criar serviço",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/providers"],
     onSuccess: () => {
-      toast({
-        title: "Novo serviço criado!",
-        description: "Seu serviço foi adicionado com sucesso.",
-      });
       setShowNewServiceForm(false);
       newServiceForm.reset({
         categoryId: "",
@@ -395,39 +292,22 @@ export default function ProviderDashboard() {
         city: provider?.user?.city || "",
         state: provider?.user?.state || "",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao criar serviço",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
     },
   });
 
-  const updateRequestStatusMutation = useMutation({
+  const updateRequestStatusMutation = useMutationWithToast({
     mutationFn: async ({ requestId, status }: { requestId: string; status: string }) => {
       const response = await authenticatedRequest('PUT', `/api/requests/${requestId}`, { status });
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Status atualizado!",
-        description: "O status da solicitação foi alterado.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/requests/provider"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao atualizar status",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    },
+    successMessage: "Status atualizado!",
+    successDescription: "O status da solicitação foi alterado.",
+    errorMessage: "Erro ao atualizar status",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests/provider"],
   });
 
-  const createNegotiationMutation = useMutation({
+  const createNegotiationMutation = useMutationWithToast({
     mutationFn: async (data: {
       requestId: string;
       pricingType: string;
@@ -440,48 +320,32 @@ export default function ProviderDashboard() {
       const response = await authenticatedRequest('POST', '/api/negotiations', data);
       return response.json();
     },
+    successMessage: "Contra-proposta enviada!",
+    successDescription: "O cliente foi notificado sobre sua proposta.",
+    errorMessage: "Erro ao enviar contra-proposta",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests/provider"],
     onSuccess: () => {
-      toast({
-        title: "Contra-proposta enviada!",
-        description: "O cliente foi notificado sobre sua proposta.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/requests/provider"] });
       setCounterProposalRequestId(null);
       setOriginalRequestData(null);
       counterProposalForm.reset();
     },
-    onError: () => {
-      toast({
-        title: "Erro ao enviar contra-proposta",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    },
   });
 
-  const updateNegotiationStatusMutation = useMutation({
+  const updateNegotiationStatusMutation = useMutationWithToast({
     mutationFn: async ({ negotiationId, status }: { negotiationId: string; status: 'accepted' | 'rejected' }) => {
       const response = await authenticatedRequest('PUT', `/api/negotiations/${negotiationId}/status`, { status });
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Status da negociação atualizado!",
-        description: "O status foi alterado com sucesso.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/requests/provider"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao atualizar status",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
-    },
+    successMessage: "Status da negociação atualizado!",
+    successDescription: "O status foi alterado com sucesso.",
+    errorMessage: "Erro ao atualizar status",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests/provider"],
   });
 
   // Create review mutation
-  const createReviewMutation = useMutation({
+  const createReviewMutation = useMutationWithToast({
     mutationFn: async (data: ReviewForm) => {
       const payload = {
         requestId: reviewRequestId,
@@ -493,22 +357,15 @@ export default function ProviderDashboard() {
       const response = await authenticatedRequest('POST', '/api/reviews', payload);
       return response.json();
     },
+    successMessage: "Avaliação enviada!",
+    successDescription: "Sua avaliação foi registrada com sucesso.",
+    errorMessage: "Erro ao enviar avaliação",
+    errorDescription: "Tente novamente em alguns instantes.",
+    invalidateQueries: ["/api/requests/provider"],
     onSuccess: () => {
-      toast({
-        title: "Avaliação enviada!",
-        description: "Sua avaliação foi registrada com sucesso.",
-      });
       setReviewRequestId(null);
       setRevieweeId(null);
       reviewForm.reset();
-      queryClient.invalidateQueries({ queryKey: ["/api/requests/provider"] });
-    },
-    onError: () => {
-      toast({
-        title: "Erro ao enviar avaliação",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
     },
   });
 
@@ -637,26 +494,6 @@ export default function ProviderDashboard() {
     return null;
   }
 
-  const handleUpdateProvider = async (data: UpdateProviderForm) => {
-    // Validar cidade e estado antes de prosseguir
-    const isCityStateValid = await validateCityState(`${data.city} - ${data.state}`);
-    if (!isCityStateValid) {
-      toast({
-        title: "Localização inválida",
-        description: "A cidade informada não foi encontrada no estado especificado. Verifique se está correta.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Converter os dados para o formato esperado pelo backend
-    const updateData = {
-      ...data,
-      location: `${data.city} - ${data.state}`
-    };
-    
-    updateProviderMutation.mutate(updateData);
-  };
 
   const handleCreateNewService = (data: NewServiceForm) => {
     // Verificar se já existe um serviço na mesma categoria
@@ -700,16 +537,6 @@ export default function ProviderDashboard() {
     return false;
   };
 
-  const formatDateTime = (dateInput: string | Date) => {
-    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-    return date.toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
   const handleCounterProposal = (data: CounterProposalForm) => {
     if (!counterProposalRequestId || !originalRequestData) return;
@@ -885,7 +712,7 @@ export default function ProviderDashboard() {
                           </div>
                           <p className="text-gray-600 text-sm mb-2">{request.description}</p>
                           <div className="flex justify-between items-center text-xs text-gray-500">
-                            <span>Solicitado em: {new Date(request.createdAt).toLocaleDateString('pt-BR')}</span>
+                            <span>Solicitado em: {formatDate(request.createdAt)}</span>
                             {request.proposedPrice && (
                               <span className="text-green-600 font-medium">R$ {request.proposedPrice}</span>
                             )}
@@ -930,10 +757,9 @@ export default function ProviderDashboard() {
               ) : (
                 <>
                   <Tabs defaultValue="overview" className="space-y-6">
-                    <TabsList className="grid w-full grid-cols-4">
+                    <TabsList className="grid w-full grid-cols-3">
                       <TabsTrigger value="overview">Visão Geral</TabsTrigger>
                       <TabsTrigger value="requests">Solicitações</TabsTrigger>
-                      <TabsTrigger value="profile">Editar Perfil</TabsTrigger>
                       <TabsTrigger value="analytics">Relatórios</TabsTrigger>
                     </TabsList>
 
@@ -1157,7 +983,7 @@ export default function ProviderDashboard() {
                                     <p className="text-gray-700 mb-3">{request.description}</p>
                                     
                                     {/* Enhanced request details */}
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 p-3 bg-gray-50 rounded-lg">
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4 p-3 bg-gray-50 rounded-lg">
                                       <div>
                                         <p className="text-xs text-gray-500 font-medium">Tipo de Orçamento</p>
                                         <p className="text-sm font-medium text-gray-900 capitalize">
@@ -1167,10 +993,33 @@ export default function ProviderDashboard() {
                                       </div>
                                       
                                       {request.proposedPrice && (
-                                        <div>
-                                          <p className="text-xs text-gray-500 font-medium">Orçamento</p>
-                                          <p className="text-sm font-medium text-green-600">R$ {request.proposedPrice}</p>
-                                        </div>
+                                        <>
+                                          <div>
+                                            <p className="text-xs text-gray-500 font-medium">Valor Final</p>
+                                            <p className="text-sm font-medium text-green-600">
+                                              {formatCurrency(request.proposedPrice)}
+                                              {request.pricingType === 'hourly' && request.proposedHours && (
+                                                <span className="text-xs text-gray-500 ml-1">
+                                                  ({request.proposedHours}h)
+                                                </span>
+                                              )}
+                                              {request.pricingType === 'daily' && request.proposedDays && (
+                                                <span className="text-xs text-gray-500 ml-1">
+                                                  ({request.proposedDays} dias)
+                                                </span>
+                                              )}
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500 font-medium">Valor Líquido</p>
+                                            <p className="text-sm font-medium text-blue-600">
+                                              {formatCurrency(parseFloat(request.proposedPrice.toString()) * 0.95)}
+                                              <span className="text-xs text-gray-500 ml-1 block">
+                                                (taxa 5%)
+                                              </span>
+                                            </p>
+                                          </div>
+                                        </>
                                       )}
                                       
                                       {request.proposedHours && (
@@ -1188,7 +1037,7 @@ export default function ProviderDashboard() {
                                       )}
                                       
                                       {request.scheduledDate && (
-                                        <div className="md:col-span-2">
+                                        <div className="md:col-span-5">
                                           <p className="text-xs text-gray-500 font-medium">Data e Horário Agendado</p>
                                           <p className="text-sm font-medium text-blue-600">
                                             {formatDateTime(request.scheduledDate)}
@@ -1198,9 +1047,105 @@ export default function ProviderDashboard() {
                                     </div>
                                     
                                     <div className="flex justify-between items-center text-sm text-gray-600 mb-3">
-                                      <span>Solicitado em: {new Date(request.createdAt).toLocaleDateString('pt-BR')}</span>
+                                      <span>Solicitado em: {formatDate(request.createdAt)}</span>
                                     </div>
                                     
+                                    {/* Daily Sessions for daily services */}
+                                    {request.pricingType === 'daily' && request.dailySessions && Array.isArray(request.dailySessions) && request.dailySessions.length > 0 && (
+                                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-3">
+                                        <h4 className="font-medium text-purple-900 mb-3 flex items-center gap-2">
+                                          <Calendar className="w-4 h-4" />
+                                          Dias do Serviço ({request.dailySessions.length})
+                                        </h4>
+                                        {/* Verificar se pode marcar dias como concluídos */}
+                                        {(() => {
+                                          const canMarkDays = (request.status === 'pending_completion' || 
+                                                              (request.status === 'accepted' && request.paymentCompletedAt));
+                                          
+                                          if (!canMarkDays) {
+                                            let message = "";
+                                            if (request.status === 'pending') {
+                                              message = "Aguarde aceitar a solicitação e o pagamento ser confirmado.";
+                                            } else if (request.status === 'payment_pending') {
+                                              message = "Aguarde o pagamento ser confirmado para marcar os dias como concluídos.";
+                                            } else if (request.status === 'cancelled' || request.status === 'rejected') {
+                                              message = "Este serviço foi cancelado ou recusado.";
+                                            } else {
+                                              // Para outros status que não permitem marcação, não exibir mensagem
+                                              return null;
+                                            }
+                                            return (
+                                              <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-3">
+                                                <p className="text-sm text-yellow-800">{message}</p>
+                                              </div>
+                                            );
+                                          }
+                                          
+                                          return null;
+                                        })()}
+                                        {(() => {
+                                          const canMarkDays = (request.status === 'pending_completion' || 
+                                                              (request.status === 'accepted' && request.paymentCompletedAt));
+                                          
+                                          return (
+                                            <div className="space-y-2">
+                                              {request.dailySessions.map((session, index) => {
+                                                return (
+                                                  <div key={index} className="bg-white border border-purple-200 rounded p-3">
+                                                    <div className="flex items-center justify-between">
+                                                      <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                          <span className="font-medium text-sm">Dia {session.day}</span>
+                                                          <span className="text-xs text-gray-500">
+                                                            {formatDate(session.scheduledDate)} às {session.scheduledTime}
+                                                          </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-4 text-xs text-gray-600">
+                                                          <span className={session.clientCompleted ? 'text-green-600' : 'text-gray-400'}>
+                                                            Cliente: {session.clientCompleted ? '✓ Concluído' : 'Pendente'}
+                                                          </span>
+                                                          <span className={session.providerCompleted ? 'text-green-600' : 'text-gray-400'}>
+                                                            Prestador: {session.providerCompleted ? '✓ Concluído' : 'Pendente'}
+                                                          </span>
+                                                        </div>
+                                                      </div>
+                                                      {!session.providerCompleted && canMarkDays && (
+                                                        <Button
+                                                          size="sm"
+                                                          variant="outline"
+                                                          onClick={async () => {
+                                                            try {
+                                                              const response = await authenticatedRequest('PUT', `/api/requests/${request.id}/daily-session/${index}`, {
+                                                                completed: true
+                                                              });
+                                                              await response.json();
+                                                              queryClient.invalidateQueries({ queryKey: ["/api/requests/provider"] });
+                                                              toast({
+                                                                title: "Dia marcado como concluído!",
+                                                                description: "O cliente também precisa confirmar para finalizar este dia.",
+                                                              });
+                                                            } catch (error: any) {
+                                                              toast({
+                                                                title: "Erro",
+                                                                description: error.message || "Não foi possível marcar o dia como concluído.",
+                                                                variant: "destructive",
+                                                              });
+                                                            }
+                                                          }}
+                                                        >
+                                                          Marcar como Concluído
+                                                        </Button>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          );
+                                        })()}
+                                      </div>
+                                    )}
+
                                     {/* Show negotiations if they exist */}
                                     {request.negotiations && request.negotiations.length > 0 && (
                                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
@@ -1221,7 +1166,7 @@ export default function ProviderDashboard() {
                                                     {negotiation.proposedPrice && (
                                                       <span className="flex items-center gap-1 text-green-600 font-medium">
                                                         <DollarSign className="w-3 h-3" />
-                                                        R$ {parseFloat(negotiation.proposedPrice).toFixed(2).replace('.', ',')}
+                                                        {formatCurrency(negotiation.proposedPrice)}
                                                       </span>
                                                     )}
                                                     {negotiation.proposedHours && (
@@ -1236,7 +1181,7 @@ export default function ProviderDashboard() {
                                                     )}
                                                     {negotiation.proposedDate && (
                                                       <span className="text-gray-600">
-                                                        {new Date(negotiation.proposedDate).toLocaleDateString('pt-BR')}
+                                                        {formatDate(negotiation.proposedDate)}
                                                       </span>
                                                     )}
                                                   </div>
@@ -1479,7 +1424,7 @@ export default function ProviderDashboard() {
                                                 })()}
                                               </div>
                                               <div className="text-xs text-gray-500">
-                                                {new Date(negotiation.createdAt).toLocaleDateString('pt-BR')} às {new Date(negotiation.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                                {formatDate(negotiation.createdAt)} às {formatTime(negotiation.createdAt)}
                                               </div>
                                             </div>
                                           ))}
@@ -1676,7 +1621,8 @@ export default function ProviderDashboard() {
                                       </div>
                                     )}
                                     
-                                    {(request.status === 'accepted' || request.status === 'pending_completion') && !request.providerCompletedAt && (
+                                    {/* Para serviços diários, não mostrar este botão - a conclusão é feita através das diárias individuais */}
+                                    {(request.status === 'accepted' || request.status === 'pending_completion') && !request.providerCompletedAt && request.pricingType !== 'daily' && (
                                       <AlertDialog>
                                         <AlertDialogTrigger asChild>
                                           <Button 
@@ -1755,118 +1701,6 @@ export default function ProviderDashboard() {
                               </p>
                             </div>
                           )}
-                        </CardContent>
-                      </Card>
-                    </TabsContent>
-
-                    <TabsContent value="profile">
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>Editar Perfil Profissional</CardTitle>
-                          <CardDescription>
-                            Mantenha suas informações pessoais atualizadas
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <Form {...form}>
-                            <form onSubmit={form.handleSubmit(handleUpdateProvider)} className="space-y-6">
-                              <FormField
-                                control={form.control}
-                                name="bio"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Sobre Mim</FormLabel>
-                                    <FormControl>
-                                      <Textarea 
-                                        placeholder="Conte um pouco sobre você, suas especialidades e o que te motiva..."
-                                        rows={4}
-                                        {...field} 
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-
-                              <FormField
-                                control={form.control}
-                                name="experience"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Experiências</FormLabel>
-                                    <FormControl>
-                                      <Textarea 
-                                        placeholder="Descreva sua experiência profissional, formação, certificações e trabalhos realizados..."
-                                        rows={4}
-                                        {...field}
-                                        value={field.value || ''} 
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <FormField
-                                  control={form.control}
-                                  name="state"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Estado</FormLabel>
-                                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                        <FormControl>
-                                          <SelectTrigger>
-                                            <SelectValue placeholder="Selecione o estado" />
-                                          </SelectTrigger>
-                                        </FormControl>
-                                        <SelectContent>
-                                          {BRAZILIAN_STATES.map((state) => (
-                                            <SelectItem key={state.value} value={state.value}>
-                                              {state.label} ({state.value})
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-
-                                <FormField
-                                  control={form.control}
-                                  name="city"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Cidade</FormLabel>
-                                      <FormControl>
-                                        <Input placeholder="Digite sua cidade" {...field} />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                              </div>
-
-                              <div className="flex gap-4">
-                                <Button 
-                                  type="submit" 
-                                  disabled={updateProviderMutation.isPending}
-                                  className="bg-primary-600 hover:bg-primary-700"
-                                >
-                                  {updateProviderMutation.isPending ? "Salvando..." : "Salvar Alterações"}
-                                </Button>
-                                
-                                <Button 
-                                  type="button" 
-                                  variant="outline"
-                                  onClick={() => form.reset()}
-                                >
-                                  Cancelar
-                                </Button>
-                              </div>
-                            </form>
-                          </Form>
                         </CardContent>
                       </Card>
                     </TabsContent>

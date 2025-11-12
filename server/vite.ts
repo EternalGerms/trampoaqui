@@ -78,11 +78,17 @@ export async function setupVite(app: Express, server: Server) {
   app.use(vite.middlewares);
   
   // Lidar apenas com rotas não-API com o catch-all
-  app.use("*", async (req, res, next) => {
+  // Use app.all to catch all HTTP methods
+  app.all("*", async (req, res, next) => {
     const url = req.originalUrl;
     
     // Pular rotas da API - deixar serem tratadas pelo middleware da API
     if (url.startsWith("/api")) {
+      return next();
+    }
+
+    // Only handle GET requests for serving HTML
+    if (req.method !== "GET") {
       return next();
     }
 
@@ -100,6 +106,12 @@ export async function setupVite(app: Express, server: Server) {
         "index.html",
       );
 
+      // Check if template file exists
+      if (!fs.existsSync(clientTemplate)) {
+        console.error(`[Vite] Template file not found: ${clientTemplate}`);
+        return res.status(500).send("Template file not found");
+      }
+
       // Sanitizar URL para prevenir XSS
       const sanitizedUrl = url.replace(/[<>"'&]/g, '');
 
@@ -116,6 +128,7 @@ export async function setupVite(app: Express, server: Server) {
       });
       res.status(200).set({ "Content-Type": "text/html" }).end(safePage);
     } catch (e) {
+      console.error("[Vite] Error serving index.html:", e);
       vite.ssrFixStacktrace(e as Error);
       next(e);
     }
@@ -125,22 +138,122 @@ export async function setupVite(app: Express, server: Server) {
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "..", "dist", "public");
 
+  console.log(`[Static] Checking dist path: ${distPath}`);
+  console.log(`[Static] __dirname: ${__dirname}`);
+  console.log(`[Static] distPath exists: ${fs.existsSync(distPath)}`);
+
   if (!fs.existsSync(distPath)) {
+    // List parent directory to help debug
+    const parentDir = path.resolve(__dirname, "..");
+    console.log(`[Static] Parent directory: ${parentDir}`);
+    console.log(`[Static] Parent exists: ${fs.existsSync(parentDir)}`);
+    if (fs.existsSync(parentDir)) {
+      try {
+        const files = fs.readdirSync(parentDir);
+        console.log(`[Static] Files in parent: ${files.join(", ")}`);
+      } catch (e) {
+        console.error(`[Static] Error reading parent dir:`, e);
+      }
+    }
     throw new Error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`,
     );
   }
 
-  app.use(express.static(distPath));
+  // Verify index.html exists
+  const indexPath = path.resolve(distPath, "index.html");
+  console.log(`[Static] Index.html path: ${indexPath}`);
+  console.log(`[Static] Index.html exists: ${fs.existsSync(indexPath)}`);
 
-  // redirecionar para index.html se o arquivo não existir
-  // Lidar apenas com rotas não-API
-  app.use("*", (req, res, next) => {
-    // Pular rotas da API - deixar serem tratadas pelo middleware da API
-    if (req.originalUrl.startsWith("/api")) {
+  console.log(`[Static] Serving static files from: ${distPath}`);
+
+  // Custom static file middleware that doesn't send 404s
+  app.use((req, res, next) => {
+    const url = req.originalUrl;
+    
+    // Skip API routes
+    if (url.startsWith("/api")) {
       return next();
     }
     
-    res.sendFile(path.resolve(distPath, "index.html"));
+    try {
+      // Try to serve static file
+      // Remove leading slash and normalize the path
+      const fileToServe = url === "/" || url === "" ? "index.html" : url.replace(/^\//, "");
+      const resolvedPath = path.resolve(distPath, fileToServe);
+      const distPathResolved = path.resolve(distPath);
+      
+      // Security check: ensure the resolved path is within distPath
+      if (!resolvedPath.startsWith(distPathResolved)) {
+        console.log(`[Static] Security check failed: ${resolvedPath} not in ${distPathResolved}`);
+        return next();
+      }
+      
+      // Check if file exists
+      if (fs.existsSync(resolvedPath)) {
+        const stats = fs.statSync(resolvedPath);
+        if (stats.isFile()) {
+          console.log(`[Static] Serving file: ${url} -> ${resolvedPath}`);
+          return res.sendFile(resolvedPath, (err) => {
+            if (err) {
+              console.error(`[Static] Error sending file ${resolvedPath}:`, err);
+              next(err);
+            }
+          });
+        }
+      }
+      
+      // File doesn't exist, continue to catch-all
+      console.log(`[Static] File not found: ${url}, continuing to catch-all`);
+      next();
+    } catch (error) {
+      console.error(`[Static] Error in static middleware for ${url}:`, error);
+      next(error);
+    }
+  });
+
+  // Catch-all route to serve index.html for all non-API routes
+  app.use((req, res, next) => {
+    const url = req.originalUrl;
+    
+    // Skip API routes
+    if (url.startsWith("/api")) {
+      return next();
+    }
+    
+    // Only handle GET requests for serving HTML
+    if (req.method !== "GET") {
+      console.log(`[Static] Catch-all skipping non-GET request: ${req.method} ${url}`);
+      return next();
+    }
+    
+    // Skip if response already sent (static file was found)
+    if (res.headersSent) {
+      console.log(`[Static] Catch-all skipping, response already sent for: ${url}`);
+      return next();
+    }
+    
+    try {
+      console.log(`[Static] Catch-all route serving index.html for: ${url}`);
+      
+      const indexPath = path.resolve(distPath, "index.html");
+      if (!fs.existsSync(indexPath)) {
+        console.error(`[Static] index.html not found at: ${indexPath}`);
+        return res.status(500).send("index.html not found");
+      }
+      
+      console.log(`[Static] Sending index.html from: ${indexPath}`);
+      res.sendFile(indexPath, (err) => {
+        if (err) {
+          console.error(`[Static] Error sending index.html:`, err);
+          next(err);
+        } else {
+          console.log(`[Static] Successfully sent index.html for: ${url}`);
+        }
+      });
+    } catch (error) {
+      console.error(`[Static] Error in catch-all for ${url}:`, error);
+      next(error);
+    }
   });
 }

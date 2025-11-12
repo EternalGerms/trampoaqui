@@ -25,6 +25,7 @@ import Header from "@/components/header";
 import Footer from "@/components/footer";
 import { authManager } from "@/lib/auth";
 import { ServiceProvider, User as UserType, ServiceCategory, Review } from "@shared/schema";
+import EditProfileDialog from "@/components/edit-profile-dialog";
 
 type ProviderWithDetails = ServiceProvider & {
   user: UserType;
@@ -47,6 +48,7 @@ export default function Profile() {
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("about");
   const [clientReviewsView, setClientReviewsView] = useState<"received" | "sent">("received");
+  const [showEditProfileDialog, setShowEditProfileDialog] = useState(false);
   
   const currentUser = authManager.getUser();
   const userId = params.id;
@@ -179,7 +181,7 @@ export default function Profile() {
     }
 
     // Get reviews specific to this service
-    const serviceSpecificReviews = serviceReviews[serviceId] || [];
+    const serviceSpecificReviews = serviceReviews[service.id] || [];
     
     // Filter out reviews from the provider themselves
     const filteredServiceReviews = serviceSpecificReviews.filter(
@@ -332,7 +334,7 @@ export default function Profile() {
               <div className="flex flex-col space-y-3 mt-6 lg:mt-0">
                 {isOwner ? (
                   <Button 
-                    onClick={() => setLocation('/dashboard')}
+                    onClick={() => setShowEditProfileDialog(true)}
                     className="w-full lg:w-auto"
                   >
                     <Edit className="w-4 h-4 mr-2" />
@@ -731,19 +733,39 @@ export default function Profile() {
                   <CardTitle>Méritos</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-6">
-                    <Award className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-500 text-sm">
-                      Conquistas serão exibidas aqui conforme você atinge marcos importantes.
-                    </p>
-                  </div>
+                  {user.emailVerified ? (
+                    <div className="flex items-center space-x-3 text-green-600">
+                      <CheckCircle className="w-6 h-6" />
+                      <div className="flex flex-col">
+                        <span className="font-semibold">Conta Verificada</span>
+                        <span className="text-sm text-gray-500">O e-mail deste usuário foi verificado.</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6">
+                      <Award className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500 text-sm">
+                        Conquistas serão exibidas aqui conforme você atinge marcos importantes.
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
+
             </div>
           </div>
         </div>
       </main>
       <Footer />
+      
+      {/* Edit Profile Dialog */}
+      {isOwner && user && (
+        <EditProfileDialog
+          user={user}
+          isOpen={showEditProfileDialog}
+          onOpenChange={setShowEditProfileDialog}
+        />
+      )}
     </div>
   );
 }

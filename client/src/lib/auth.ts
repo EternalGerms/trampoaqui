@@ -6,11 +6,18 @@ export interface User {
   name: string;
   isProviderEnabled: boolean;
   isAdmin: boolean;
+  emailVerified?: boolean;
   bio?: string;
   experience?: string;
   location?: string;
+  phone?: string;
+  cep?: string;
   city?: string;
   state?: string;
+  street?: string;
+  neighborhood?: string;
+  number?: string;
+  complement?: string;
 }
 
 export interface AuthResponse {

@@ -14,6 +14,9 @@ export const users = pgTable("users", {
   birthDate: timestamp("birth_date").notNull(),
   isProviderEnabled: boolean("is_provider_enabled").default(false).notNull(),
   isAdmin: boolean("is_admin").default(false).notNull(),
+  emailVerified: boolean("email_verified").default(false).notNull(),
+  emailVerificationToken: text("email_verification_token"),
+  emailVerificationExpires: timestamp("email_verification_expires"),
   // Provider profile fields
   bio: text("bio"), // About me section
   experience: text("experience"), // Professional experience
@@ -67,11 +70,13 @@ export const serviceRequests = pgTable("service_requests", {
   proposedHours: integer("proposed_hours"), // Para serviços por hora
   proposedDays: integer("proposed_days"), // Para serviços diários
   scheduledDate: timestamp("scheduled_date"),
+  dailySessions: jsonb("daily_sessions").default([]), // Array de dias para serviços diários
   negotiationHistory: jsonb("negotiation_history").default([]), // Array de contra-propostas
   clientCompletedAt: timestamp("client_completed_at"), // Quando o cliente marcou como concluído
   providerCompletedAt: timestamp("provider_completed_at"), // Quando o prestador marcou como concluído
   paymentMethod: text("payment_method"), // 'boleto', 'pix', 'credit_card'
   paymentCompletedAt: timestamp("payment_completed_at"), // Quando o pagamento foi realizado
+  balanceAddedAt: timestamp("balance_added_at"), // Quando o saldo foi adicionado ao prestador
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -248,6 +253,49 @@ export const updateProviderProfileSchema = z.object({
   }, "Formato recomendado: Cidade - Estado (ex: São Paulo - SP)"),
 });
 
+// User profile update schema (for updating user address and personal info)
+export const updateUserProfileSchema = z.object({
+  phone: z.string().optional(),
+  cep: z.string().optional().refine((cep) => {
+    if (!cep) return true;
+    // Remove non-numeric characters
+    const cleanCep = cep.replace(/\D/g, '');
+    return cleanCep.length === 8;
+  }, "CEP deve ter 8 dígitos"),
+  city: z.string().optional(),
+  state: z.string().optional().refine((state) => {
+    if (!state) return true;
+    const validStates = [
+      'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 
+      'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 
+      'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+    ];
+    return validStates.includes(state.toUpperCase());
+  }, "Estado deve ser uma UF válida do Brasil"),
+  street: z.string().optional(),
+  neighborhood: z.string().optional(),
+  number: z.string().optional(),
+  complement: z.string().optional(),
+  bio: z.string().optional(),
+  experience: z.string().optional(),
+  location: z.string().optional(),
+});
+
+// Change password schema
+export const changePasswordSchema = z.object({
+  oldPassword: z.string().min(1, "Senha antiga é obrigatória"),
+  newPassword: z.string().min(6, "Nova senha deve ter pelo menos 6 caracteres"),
+  confirmPassword: z.string().min(1, "Confirmação de senha é obrigatória"),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: "As senhas não coincidem",
+  path: ["confirmPassword"],
+});
+
+// Delete account schema
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1, "Senha é obrigatória para confirmar a exclusão"),
+});
+
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({
   id: true,
 });
@@ -318,6 +366,18 @@ export const insertServiceRequestSchema = createInsertSchema(serviceRequests).om
     }
     return val;
   }),
+  dailySessions: z.array(z.object({
+    day: z.number(),
+    scheduledDate: z.union([z.date(), z.string()]).transform((val) => {
+      if (typeof val === 'string') {
+        return new Date(val);
+      }
+      return val;
+    }),
+    scheduledTime: z.string(),
+    clientCompleted: z.boolean(),
+    providerCompleted: z.boolean(),
+  })).optional(),
 });
 
 export const insertNegotiationSchema = createInsertSchema(negotiations).omit({
@@ -365,6 +425,12 @@ export const updateServiceRequestSchema = insertServiceRequestSchema.partial().e
   }),
   paymentMethod: z.enum(['boleto', 'pix', 'credit_card']).optional(),
   paymentCompletedAt: z.union([z.date(), z.string()]).optional().transform((val) => {
+    if (typeof val === 'string') {
+      return new Date(val);
+    }
+    return val;
+  }),
+  balanceAddedAt: z.union([z.date(), z.string()]).optional().transform((val) => {
     if (typeof val === 'string') {
       return new Date(val);
     }

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-
+import { isValidBrazilianState } from "@/constants/brazilianStates";
 import { Link } from "wouter";
 
 const registerSchema = z.object({
@@ -64,18 +64,22 @@ const registerSchema = z.object({
   city: z.string().min(2, "Cidade deve ter pelo menos 2 caracteres"),
   state: z.string().min(2, "Estado deve ter pelo menos 2 caracteres")
     .refine((state) => {
-      const validStates = [
-        'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 
-        'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 
-        'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
-      ];
-      return validStates.includes(state.toUpperCase());
+      return isValidBrazilianState(state);
     }, "Estado deve ser uma UF válida do Brasil"),
   street: z.string().min(2, "Rua deve ter pelo menos 2 caracteres"),
   neighborhood: z.string().min(2, "Bairro deve ter pelo menos 2 caracteres"),
   number: z.string().optional(),
   hasNumber: z.boolean().default(true),
   complement: z.string().optional(),
+}).refine((data) => {
+  // Se hasNumber é true, o campo number deve estar preenchido
+  if (data.hasNumber && (!data.number || data.number.trim() === '')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "O número do endereço é obrigatório quando o endereço possui número",
+  path: ["number"],
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;
