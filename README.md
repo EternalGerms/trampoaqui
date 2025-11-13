@@ -1863,17 +1863,6 @@ Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICE
 - [ViaCEP API](https://viacep.com.br/): API para consulta de CEP brasileiro
 - [Nodemailer Documentation](https://nodemailer.com/about/): Biblioteca para envio de emails
 
-## 📞 Contato
-
-Para dúvidas, sugestões ou problemas relacionados ao projeto:
-
-- **Email**: seu-email@example.com
-- **GitHub**: [seu-usuario/trampoaqui](https://github.com/seu-usuario/trampoaqui)
-
-## 🙏 Agradecimentos
-
-Agradecimentos a todos que contribuíram para o desenvolvimento deste projeto, especialmente à Prof. Viviane de Fátima Bartholo pela orientação e suporte durante o desenvolvimento.
-
 ---
 
 **Desenvolvido com ❤️ para comunidades locais**
