@@ -3,6 +3,9 @@ import { storage } from "../storage";
 import { insertReviewSchema } from "@shared/schema";
 import { authenticateToken } from "../middleware/auth";
 import { handleRouteError } from "../utils/errorHandler";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("review");
 
 export function registerReviewRoutes(app: Express) {
   // Create review
@@ -36,7 +39,12 @@ export function registerReviewRoutes(app: Express) {
       const reviews = await storage.getReviewsByProviderUser(req.params.userId);
       res.json(reviews);
     } catch (error) {
-      console.error("Error fetching provider reviews:", error);
+      logger.error("Error fetching provider reviews", {
+        error,
+        userId: req.params.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -47,7 +55,12 @@ export function registerReviewRoutes(app: Express) {
       const reviews = await storage.getReviewsByServiceProvider(req.params.serviceProviderId);
       res.json(reviews);
     } catch (error) {
-      console.error("Error fetching service provider reviews:", error);
+      logger.error("Error fetching service provider reviews", {
+        error,
+        serviceProviderId: req.params.serviceProviderId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -58,7 +71,12 @@ export function registerReviewRoutes(app: Express) {
       const reviews = await storage.getReviewsByUserReceived(req.params.userId);
       res.json(reviews);
     } catch (error) {
-      console.error("Error fetching user received reviews:", error);
+      logger.error("Error fetching user received reviews", {
+        error,
+        userId: req.params.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -69,7 +87,12 @@ export function registerReviewRoutes(app: Express) {
       const reviews = await storage.getReviewsByUserSent(req.params.userId);
       res.json(reviews);
     } catch (error) {
-      console.error("Error fetching user sent reviews:", error);
+      logger.error("Error fetching user sent reviews", {
+        error,
+        userId: req.params.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -80,7 +103,12 @@ export function registerReviewRoutes(app: Express) {
       const reviews = await storage.getReviewsByProviderUser(req.params.userId);
       res.json(reviews);
     } catch (error) {
-      console.error("Error fetching provider user reviews:", error);
+      logger.error("Error fetching provider user reviews", {
+        error,
+        userId: req.params.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -91,7 +119,12 @@ export function registerReviewRoutes(app: Express) {
       const reviews = await storage.getReviewsByUserAsClientReceived(req.params.userId);
       res.json(reviews);
     } catch (error) {
-      console.error("Error fetching client user received reviews:", error);
+      logger.error("Error fetching client user received reviews", {
+        error,
+        userId: req.params.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -102,7 +135,12 @@ export function registerReviewRoutes(app: Express) {
       const reviews = await storage.getReviewsByUserAsClientSent(req.params.userId);
       res.json(reviews);
     } catch (error) {
-      console.error("Error fetching client user sent reviews:", error);
+      logger.error("Error fetching client user sent reviews", {
+        error,
+        userId: req.params.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -113,7 +151,12 @@ export function registerReviewRoutes(app: Express) {
       const reviews = await storage.getReviewsByUserAsProviderReceived(req.params.userId);
       res.json(reviews);
     } catch (error) {
-      console.error("Error fetching provider user received reviews:", error);
+      logger.error("Error fetching provider user received reviews", {
+        error,
+        userId: req.params.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });

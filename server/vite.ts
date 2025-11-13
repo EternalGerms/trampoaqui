@@ -6,6 +6,7 @@ import { createServer as createViteServer, createLogger } from "vite";
 import { type Server } from "http";
 import viteConfig from "../vite.config";
 import { nanoid } from "nanoid";
+import { createLogger as createAppLogger } from "./utils/logger.js";
 
 // Função de escape HTML para prevenir XSS
 function escapeHtml(unsafe: string): string {
@@ -42,17 +43,7 @@ function checkRateLimit(ip: string): boolean {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const viteLogger = createLogger();
-
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
+const logger = createAppLogger("vite");
 
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
@@ -108,7 +99,7 @@ export async function setupVite(app: Express, server: Server) {
 
       // Check if template file exists
       if (!fs.existsSync(clientTemplate)) {
-        console.error(`[Vite] Template file not found: ${clientTemplate}`);
+        logger.error("Template file not found", { templatePath: clientTemplate });
         return res.status(500).send("Template file not found");
       }
 
@@ -128,7 +119,7 @@ export async function setupVite(app: Express, server: Server) {
       });
       res.status(200).set({ "Content-Type": "text/html" }).end(safePage);
     } catch (e) {
-      console.error("[Vite] Error serving index.html:", e);
+      logger.error("Error serving index.html", { error: e, url });
       vite.ssrFixStacktrace(e as Error);
       next(e);
     }
@@ -136,23 +127,21 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
+  const staticLogger = createAppLogger("static");
   const distPath = path.resolve(__dirname, "..", "dist", "public");
 
-  console.log(`[Static] Checking dist path: ${distPath}`);
-  console.log(`[Static] __dirname: ${__dirname}`);
-  console.log(`[Static] distPath exists: ${fs.existsSync(distPath)}`);
+  staticLogger.debug("Checking dist path", { distPath, __dirname, exists: fs.existsSync(distPath) });
 
   if (!fs.existsSync(distPath)) {
     // List parent directory to help debug
     const parentDir = path.resolve(__dirname, "..");
-    console.log(`[Static] Parent directory: ${parentDir}`);
-    console.log(`[Static] Parent exists: ${fs.existsSync(parentDir)}`);
+    staticLogger.debug("Parent directory info", { parentDir, exists: fs.existsSync(parentDir) });
     if (fs.existsSync(parentDir)) {
       try {
         const files = fs.readdirSync(parentDir);
-        console.log(`[Static] Files in parent: ${files.join(", ")}`);
+        staticLogger.debug("Files in parent directory", { files });
       } catch (e) {
-        console.error(`[Static] Error reading parent dir:`, e);
+        staticLogger.error("Error reading parent directory", { error: e });
       }
     }
     throw new Error(
@@ -162,10 +151,9 @@ export function serveStatic(app: Express) {
 
   // Verify index.html exists
   const indexPath = path.resolve(distPath, "index.html");
-  console.log(`[Static] Index.html path: ${indexPath}`);
-  console.log(`[Static] Index.html exists: ${fs.existsSync(indexPath)}`);
+  staticLogger.debug("Index.html check", { indexPath, exists: fs.existsSync(indexPath) });
 
-  console.log(`[Static] Serving static files from: ${distPath}`);
+  staticLogger.info("Serving static files", { distPath });
 
   // Custom static file middleware that doesn't send 404s
   app.use((req, res, next) => {
@@ -185,7 +173,7 @@ export function serveStatic(app: Express) {
       
       // Security check: ensure the resolved path is within distPath
       if (!resolvedPath.startsWith(distPathResolved)) {
-        console.log(`[Static] Security check failed: ${resolvedPath} not in ${distPathResolved}`);
+        staticLogger.warn("Security check failed", { resolvedPath, distPathResolved, url });
         return next();
       }
       
@@ -193,10 +181,10 @@ export function serveStatic(app: Express) {
       if (fs.existsSync(resolvedPath)) {
         const stats = fs.statSync(resolvedPath);
         if (stats.isFile()) {
-          console.log(`[Static] Serving file: ${url} -> ${resolvedPath}`);
+          staticLogger.debug("Serving file", { url, resolvedPath });
           return res.sendFile(resolvedPath, (err) => {
             if (err) {
-              console.error(`[Static] Error sending file ${resolvedPath}:`, err);
+              staticLogger.error("Error sending file", { error: err, resolvedPath, url });
               next(err);
             }
           });
@@ -204,10 +192,10 @@ export function serveStatic(app: Express) {
       }
       
       // File doesn't exist, continue to catch-all
-      console.log(`[Static] File not found: ${url}, continuing to catch-all`);
+      staticLogger.debug("File not found, continuing to catch-all", { url });
       next();
     } catch (error) {
-      console.error(`[Static] Error in static middleware for ${url}:`, error);
+      staticLogger.error("Error in static middleware", { error, url });
       next(error);
     }
   });
@@ -223,36 +211,36 @@ export function serveStatic(app: Express) {
     
     // Only handle GET requests for serving HTML
     if (req.method !== "GET") {
-      console.log(`[Static] Catch-all skipping non-GET request: ${req.method} ${url}`);
+      staticLogger.debug("Catch-all skipping non-GET request", { method: req.method, url });
       return next();
     }
     
     // Skip if response already sent (static file was found)
     if (res.headersSent) {
-      console.log(`[Static] Catch-all skipping, response already sent for: ${url}`);
+      staticLogger.debug("Catch-all skipping, response already sent", { url });
       return next();
     }
     
     try {
-      console.log(`[Static] Catch-all route serving index.html for: ${url}`);
+      staticLogger.debug("Catch-all route serving index.html", { url });
       
       const indexPath = path.resolve(distPath, "index.html");
       if (!fs.existsSync(indexPath)) {
-        console.error(`[Static] index.html not found at: ${indexPath}`);
+        staticLogger.error("index.html not found", { indexPath });
         return res.status(500).send("index.html not found");
       }
       
-      console.log(`[Static] Sending index.html from: ${indexPath}`);
+      staticLogger.debug("Sending index.html", { indexPath, url });
       res.sendFile(indexPath, (err) => {
         if (err) {
-          console.error(`[Static] Error sending index.html:`, err);
+          staticLogger.error("Error sending index.html", { error: err, indexPath, url });
           next(err);
         } else {
-          console.log(`[Static] Successfully sent index.html for: ${url}`);
+          staticLogger.debug("Successfully sent index.html", { url });
         }
       });
     } catch (error) {
-      console.error(`[Static] Error in catch-all for ${url}:`, error);
+      staticLogger.error("Error in catch-all", { error, url });
       next(error);
     }
   });

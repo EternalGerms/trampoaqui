@@ -2,6 +2,9 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { authenticateToken } from "../middleware/auth";
 import { formatUserResponsePublic } from "../utils/response";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("user");
 
 export function registerUserRoutes(app: Express) {
   // Get profile status
@@ -64,7 +67,12 @@ export function registerUserRoutes(app: Express) {
       }
       res.json(formatUserResponsePublic(user));
     } catch (error) {
-      console.error("Error fetching user:", error);
+      logger.error("Error fetching user", {
+        error,
+        userId: req.params.id,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });

@@ -4,6 +4,9 @@ import { insertServiceProviderSchema } from "@shared/schema";
 import { authenticateToken } from "../middleware/auth";
 import { handleRouteError } from "../utils/errorHandler";
 import { ZodError } from "zod";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("serviceProvider");
 
 export function registerServiceProviderRoutes(app: Express) {
   // Get all providers (with optional category filter)
@@ -60,7 +63,12 @@ export function registerServiceProviderRoutes(app: Express) {
       const provider = await storage.createServiceProvider(providerData);
       res.json(provider);
     } catch (error) {
-      console.error("Error creating provider:", error);
+      logger.error("Error creating provider", {
+        error,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       handleRouteError(error, res);
     }
   });
@@ -81,7 +89,13 @@ export function registerServiceProviderRoutes(app: Express) {
       const updatedProvider = await storage.updateServiceProvider(req.params.id, updateData);
       res.json(updatedProvider);
     } catch (error) {
-      console.error("Error updating provider:", error);
+      logger.error("Error updating provider", {
+        error,
+        providerId: req.params.id,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       if (error instanceof ZodError) {
         return res.status(400).json({ message: "Invalid input data", details: error.flatten() });
       }
@@ -116,7 +130,13 @@ export function registerServiceProviderRoutes(app: Express) {
       await storage.deleteServiceProvider(req.params.id);
       res.json({ message: "Provider deleted successfully" });
     } catch (error) {
-      console.error("Error deleting provider:", error);
+      logger.error("Error deleting provider", {
+        error,
+        providerId: req.params.id,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error", details: error instanceof Error ? error.message : "Unknown error" });
     }
   });
@@ -127,7 +147,12 @@ export function registerServiceProviderRoutes(app: Express) {
       const providers = await storage.getServiceProvidersByUserIdWithDetails(req.user!.userId);
       res.json(providers);
     } catch (error) {
-      console.error("Error fetching user's providers:", error);
+      logger.error("Error fetching user's providers", {
+        error,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });

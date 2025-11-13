@@ -2,6 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { createServer as createHttpsServer } from "https";
 import { readFileSync } from "fs";
+import { createLogger } from "./utils/logger.js";
+
+const logger = createLogger("routes");
 import { registerAuthRoutes } from "./controllers/authController";
 import { registerUserRoutes } from "./controllers/userController";
 import { registerCategoryRoutes, seedCategories } from "./controllers/categoryController";
@@ -43,9 +46,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cert: readFileSync(process.env.SSL_CERT)
       };
       const httpsServer = createHttpsServer(httpsOptions, app);
+      logger.info("HTTPS server configured successfully");
       return httpsServer;
     } catch (error) {
-      console.warn('HTTPS setup failed, falling back to HTTP:', error);
+      logger.warn("HTTPS setup failed, falling back to HTTP", {
+        error,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
     }
   }
   

@@ -1,5 +1,8 @@
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import { createLogger } from "./logger.js";
+
+const logger = createLogger("email");
 
 let transporter: nodemailer.Transporter;
 const DEFAULT_FRONTEND_URL = 'http://localhost:5173';
@@ -14,7 +17,7 @@ function initializeTransporter() {
   const missingVars = requiredEnvVars.filter(v => !process.env[v]);
 
   // Debug: log which variables are available
-  console.log('📧 Email configuration check:');
+  const configStatus: Record<string, string> = {};
   requiredEnvVars.forEach(v => {
     const value = process.env[v];
     if (value) {
@@ -22,15 +25,19 @@ function initializeTransporter() {
       const maskedValue = v.includes('PASS') || v.includes('SECRET') 
         ? '***' + value.slice(-3) 
         : value;
-      console.log(`  ✅ ${v}: ${maskedValue}`);
+      configStatus[v] = maskedValue;
     } else {
-      console.log(`  ❌ ${v}: not set`);
+      configStatus[v] = 'not set';
     }
   });
 
+  logger.debug("Email configuration check", { configStatus });
+
   if (missingVars.length > 0) {
-    console.error(`❌ Email service is disabled. Missing required environment variables: ${missingVars.join(', ')}`);
-    console.error(`💡 Make sure these variables are set in your .env file and the container has been restarted.`);
+    logger.warn("Email service is disabled", {
+      missingVars,
+      message: "Make sure these variables are set in your .env file and the container has been restarted",
+    });
     return;
   }
 
@@ -44,11 +51,16 @@ function initializeTransporter() {
         pass: process.env.EMAIL_PASS,
       },
     });
-    console.log('✅ Email transporter initialized successfully');
-    console.log(`📧 Email will be sent from: ${process.env.EMAIL_FROM}`);
-    console.log(`🌐 Frontend URL: ${APP_URL}`);
+    logger.info("Email transporter initialized successfully", {
+      from: process.env.EMAIL_FROM,
+      frontendUrl: APP_URL,
+    });
   } catch (error) {
-    console.error('❌ Failed to initialize email transporter:', error);
+    logger.error("Failed to initialize email transporter", {
+      error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
   }
 }
 
@@ -57,7 +69,7 @@ initializeTransporter();
 
 export const sendVerificationEmail = async (email: string, token: string): Promise<boolean> => {
   if (!transporter) {
-    console.error('Email transporter is not initialized. Cannot send verification email.');
+    logger.error("Email transporter is not initialized. Cannot send verification email.");
     return false;
   }
 
@@ -141,9 +153,15 @@ export const sendVerificationEmail = async (email: string, token: string): Promi
 
   try {
     await transporter.sendMail(mailOptions);
+    logger.info("Verification email sent successfully", { email, appUrl: APP_URL });
     return true;
   } catch (error) {
-    console.error('❌ Error sending verification email:', error);
+    logger.error("Error sending verification email", {
+      error,
+      email,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return false;
   }
 };

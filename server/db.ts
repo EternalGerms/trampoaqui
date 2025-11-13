@@ -2,6 +2,9 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from "@shared/schema";
+import { createLogger } from "./utils/logger.js";
+
+const logger = createLogger("db");
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -28,9 +31,13 @@ if (!db) {
 export const testConnection = async () => {
   try {
     await pool.query('SELECT 1');
-    console.log('✅ Database connected successfully');
+    logger.info("Database connected successfully");
   } catch (err) {
-    console.error('❌ Database connection failed:', err);
+    logger.error("Database connection failed", {
+      error: err,
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     // Encerrar o processo se a conexão com o banco de dados falhar na inicialização
     process.exit(1);
   }

@@ -4,6 +4,9 @@ import { db } from "../db";
 import { sql, eq, desc, or } from "drizzle-orm";
 import { users, serviceProviders, serviceRequests, serviceCategories } from "@shared/schema";
 import { authenticateToken, authenticateAdmin } from "../middleware/auth";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("admin");
 
 export function registerAdminRoutes(app: Express) {
   // Get admin dashboard data
@@ -48,7 +51,12 @@ export function registerAdminRoutes(app: Express) {
         }))
       });
     } catch (error) {
-      console.error("Error fetching admin dashboard data:", error);
+      logger.error("Error fetching admin dashboard data", {
+        error,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -76,7 +84,15 @@ export function registerAdminRoutes(app: Express) {
       
       res.json(usersList);
     } catch (error) {
-      console.error("Error fetching users:", error);
+      logger.error("Error fetching users", {
+        error,
+        userId: req.user?.userId,
+        page: req.query.page,
+        limit: req.query.limit,
+        search: req.query.search,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -111,7 +127,15 @@ export function registerAdminRoutes(app: Express) {
         provider: r.provider ? { ...r.provider, category: r.category } : null
       })));
     } catch (error) {
-      console.error("Error fetching requests:", error);
+      logger.error("Error fetching requests", {
+        error,
+        userId: req.user?.userId,
+        page: req.query.page,
+        limit: req.query.limit,
+        status: req.query.status,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -123,7 +147,14 @@ export function registerAdminRoutes(app: Express) {
       const user = await storage.updateUser(req.params.id, { isAdmin });
       res.json(user);
     } catch (error) {
-      console.error("Error updating user admin status:", error);
+      logger.error("Error updating user admin status", {
+        error,
+        targetUserId: req.params.id,
+        adminUserId: req.user?.userId,
+        isAdmin: req.body.isAdmin,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -139,7 +170,13 @@ export function registerAdminRoutes(app: Express) {
       await db.delete(users).where(eq(users.id, req.params.id));
       res.json({ message: "User deleted successfully" });
     } catch (error) {
-      console.error("Error deleting user:", error);
+      logger.error("Error deleting user", {
+        error,
+        targetUserId: req.params.id,
+        adminUserId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });

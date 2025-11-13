@@ -10,6 +10,9 @@ import { generateAuthToken } from "../utils/auth";
 import { formatUserResponse, formatUserResponseFull, formatUserResponseProvider } from "../utils/response";
 import { handleRouteError } from "../utils/errorHandler";
 import { authenticateToken } from "../middleware/auth";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("auth");
 
 const RESEND_VERIFICATION_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 const resendVerificationTracker = new Map<string, number>();
@@ -48,7 +51,10 @@ export function registerAuthRoutes(app: Express) {
       // Enviar e-mail de verificação
       const emailSent = await sendVerificationEmail(user.email, emailVerificationToken);
       if (!emailSent) {
-        console.warn("Verification email could not be sent during registration.");
+        logger.warn("Verification email could not be sent during registration", {
+          email: user.email,
+          userId: user.id,
+        });
       }
 
       // Gerar token JWT
@@ -59,7 +65,12 @@ export function registerAuthRoutes(app: Express) {
         user: formatUserResponse(user)
       });
     } catch (error) {
-      console.error("Registration error:", error);
+      logger.error("Registration error", {
+        error,
+        email: req.body.email,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       handleRouteError(error, res);
     }
   });
@@ -130,7 +141,9 @@ export function registerAuthRoutes(app: Express) {
 
       const emailSent = await sendVerificationEmail(user.email, emailVerificationToken);
       if (!emailSent) {
-        console.error("Failed to resend verification email: transporter not initialized or send failed.");
+        logger.error("Failed to resend verification email: transporter not initialized or send failed", {
+          email: req.body.email,
+        });
         return res.status(500).json({ message: "Não foi possível enviar o e-mail de verificação. Tente novamente mais tarde." });
       }
 
@@ -144,7 +157,12 @@ export function registerAuthRoutes(app: Express) {
         return res.status(400).json({ message: "Dados inválidos", details: error.flatten() });
       }
 
-      console.error("Erro ao reenviar e-mail de verificação:", error);
+      logger.error("Erro ao reenviar e-mail de verificação", {
+        error,
+        email: req.body.email,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       return res.status(500).json({ message: "Erro interno do servidor" });
     }
   });
@@ -180,7 +198,12 @@ export function registerAuthRoutes(app: Express) {
         verified: true 
       });
     } catch (error) {
-      console.error("Erro na verificação de e-mail:", error);
+      logger.error("Erro na verificação de e-mail", {
+        error,
+        token: req.query.token,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Erro interno do servidor" });
     }
   });
@@ -237,7 +260,12 @@ export function registerAuthRoutes(app: Express) {
       
       res.json(formatUserResponseFull(user));
     } catch (error) {
-      console.error("Error updating profile:", error);
+      logger.error("Error updating profile", {
+        error,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       if (error instanceof ZodError) {
         return res.status(400).json({ message: "Invalid profile data", details: error.flatten() });
       }
@@ -270,7 +298,12 @@ export function registerAuthRoutes(app: Express) {
 
       res.json({ message: "Senha alterada com sucesso" });
     } catch (error) {
-      console.error("Error changing password:", error);
+      logger.error("Error changing password", {
+        error,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       if (error instanceof ZodError) {
         return res.status(400).json({ message: "Dados inválidos", details: error.flatten() });
       }
@@ -358,12 +391,22 @@ export function registerAuthRoutes(app: Express) {
 
       res.json({ message: "Conta excluída com sucesso" });
     } catch (error) {
-      console.error("Error deleting account:", error);
+      logger.error("Error deleting account", {
+        error,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       // Re-enable foreign key constraints in case of error
       try {
         await db.execute(sql`SET session_replication_role = DEFAULT`);
       } catch (e) {
-        console.error("Error re-enabling foreign key constraints:", e);
+        logger.error("Error re-enabling foreign key constraints", {
+          error: e,
+          userId: req.user?.userId,
+          message: e instanceof Error ? e.message : String(e),
+          stack: e instanceof Error ? e.stack : undefined,
+        });
       }
       if (error instanceof ZodError) {
         return res.status(400).json({ message: "Dados inválidos", details: error.flatten() });

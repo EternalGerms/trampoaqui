@@ -1,6 +1,9 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { authenticateToken } from "../middleware/auth";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("payment");
 
 export function registerPaymentRoutes(app: Express) {
   // Process payment for a request
@@ -30,7 +33,14 @@ export function registerPaymentRoutes(app: Express) {
       const updatedRequest = await storage.updateServiceRequestPayment(req.params.id, paymentMethod);
       res.json(updatedRequest);
     } catch (error) {
-      console.error("Error processing payment:", error);
+      logger.error("Error processing payment", {
+        error,
+        requestId: req.params.id,
+        userId: req.user?.userId,
+        paymentMethod: req.body.paymentMethod,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -56,7 +66,13 @@ export function registerPaymentRoutes(app: Express) {
       const updatedRequest = await storage.completeServiceRequestPayment(req.params.id);
       res.json(updatedRequest);
     } catch (error) {
-      console.error("Error completing payment:", error);
+      logger.error("Error completing payment", {
+        error,
+        requestId: req.params.id,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });

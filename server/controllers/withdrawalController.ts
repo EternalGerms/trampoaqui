@@ -1,6 +1,9 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { authenticateToken } from "../middleware/auth";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("withdrawal");
 
 export function registerWithdrawalRoutes(app: Express) {
   // Create withdrawal
@@ -28,7 +31,13 @@ export function registerWithdrawalRoutes(app: Express) {
       
       res.json(withdrawal);
     } catch (error) {
-      console.error("Error creating withdrawal:", error);
+      logger.error("Error creating withdrawal", {
+        error,
+        userId: req.user?.userId,
+        amount: req.body.amount,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -39,7 +48,12 @@ export function registerWithdrawalRoutes(app: Express) {
       const withdrawals = await storage.getWithdrawalsByUser(req.user!.userId);
       res.json(withdrawals);
     } catch (error) {
-      console.error("Error fetching withdrawals:", error);
+      logger.error("Error fetching withdrawals", {
+        error,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });

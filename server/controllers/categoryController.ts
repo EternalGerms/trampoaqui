@@ -1,5 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("category");
 
 /**
  * Seed initial service categories
@@ -10,11 +13,11 @@ export async function seedCategories() {
   
   // Se já existem categorias, não precisamos semear novamente
   if (existingCategories.length > 0) {
-    console.log(`ℹ️  Categories already seeded (${existingCategories.length} found), skipping...`);
+    logger.info("Categories already seeded, skipping", { count: existingCategories.length });
     return;
   }
 
-  console.log('🌱 Seeding initial service categories...');
+  logger.info("Seeding initial service categories");
   const categories = [
     { name: "Eletricista", icon: "fas fa-bolt", slug: "eletricista" },
     { name: "Encanador", icon: "fas fa-wrench", slug: "encanador" },
@@ -28,12 +31,17 @@ export async function seedCategories() {
   for (const category of categories) {
     try {
       await storage.createServiceCategory(category);
-      console.log(`  ✓ Created category: ${category.name}`);
+      logger.debug("Created category", { name: category.name, slug: category.slug });
     } catch (error) {
-      console.error(`  ✗ Failed to create category ${category.name}:`, error);
+      logger.error("Failed to create category", {
+        error,
+        category: category.name,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
     }
   }
-  console.log('✅ Categories seeded successfully');
+  logger.info("Categories seeded successfully", { count: categories.length });
 }
 
 export function registerCategoryRoutes(app: Express) {

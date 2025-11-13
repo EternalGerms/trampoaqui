@@ -1,20 +1,28 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
-import { log, setupVite, serveStatic } from "./vite";
+import { setupVite, serveStatic } from "./vite";
 import { testConnection } from "./db";
+import { createLogger } from "./utils/logger.js";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+const logger = createLogger("express");
+
 // Request logging middleware - log ALL requests for debugging
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
+  const ip = req.ip || req.connection.remoteAddress || 'unknown';
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
-  console.log(`[Request] ${req.method} ${req.originalUrl} - IP: ${req.ip || req.connection.remoteAddress || 'unknown'}`);
+  logger.debug("Incoming request", {
+    method: req.method,
+    path: req.originalUrl,
+    ip,
+  });
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
@@ -24,49 +32,60 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
+    const logData = {
+      method: req.method,
+      path,
+      statusCode: res.statusCode,
+      duration: `${duration}ms`,
+      ip,
+    };
+
+    if (capturedJsonResponse) {
+      logData.response = capturedJsonResponse;
+    }
+
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      if (res.statusCode >= 400) {
+        logger.warn("API request completed with error", logData);
+      } else {
+        logger.info("API request completed", logData);
       }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
     } else {
-      // Log non-API requests too for debugging
-      console.log(`[Request] ${req.method} ${path} ${res.statusCode} in ${duration}ms`);
+      logger.debug("Non-API request completed", logData);
     }
   });
 
   // Error handler for this request
   res.on("error", (err) => {
-    console.error(`[Request Error] ${req.method} ${req.originalUrl}:`, err);
+    logger.error("Request error", {
+      method: req.method,
+      path: req.originalUrl,
+      error: err,
+      ip,
+    });
   });
 
   next();
 });
 
 (async () => {
-  console.log('🔄 [DEBUG] Server starting...');
+  logger.info("Server starting...");
   await testConnection();
 
-  console.log('🔄 [DEBUG] Registering routes...');
+  logger.debug("Registering routes...");
   const server = await registerRoutes(app);
-  console.log('🔄 [DEBUG] Routes registered successfully');
+  logger.info("Routes registered successfully");
 
   // Set up frontend serving based on environment
   // This must be done AFTER routes are registered but BEFORE error handler
   if (process.env.NODE_ENV === 'production') {
-    console.log('🔄 [DEBUG] Setting up static file serving...');
+    logger.debug("Setting up static file serving...");
     serveStatic(app);
-    console.log('🔄 [DEBUG] Static file serving configured');
+    logger.info("Static file serving configured");
   } else {
-    console.log('🔄 [DEBUG] Setting up Vite dev server...');
+    logger.debug("Setting up Vite dev server...");
     await setupVite(app, server);
-    console.log('🔄 [DEBUG] Vite dev server configured');
+    logger.info("Vite dev server configured");
   }
 
   // Final catch-all for any unmatched routes (shouldn't be needed, but safety net)
@@ -76,7 +95,11 @@ app.use((req, res, next) => {
     }
     // If we get here and no response was sent, something went wrong
     if (!res.headersSent) {
-      console.log(`[Final Catch-all] Unhandled route: ${req.method} ${req.originalUrl}`);
+      logger.warn("Unhandled route", {
+        method: req.method,
+        path: req.originalUrl,
+        ip: req.ip || req.connection.remoteAddress || 'unknown',
+      });
       next(); // Let error handler deal with it
     }
   });
@@ -86,7 +109,12 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    console.error("Global error handler:", err);
+    logger.error("Global error handler", {
+      status,
+      message,
+      error: err,
+      stack: err.stack,
+    });
     res.status(status).json({ message });
     // Don't throw the error again - it would crash the server
   });
@@ -96,11 +124,18 @@ app.use((req, res, next) => {
   // Tratamento de erro para evitar crashes
   server.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
-      log(`❌ Port ${port} is already in use. Server will retry automatically.`);
+      logger.warn("Port already in use", {
+        port,
+        message: "Server will retry automatically",
+        error: err,
+      });
       // Não tentar mudar a porta automaticamente em modo watch
       // O tsx watch vai reiniciar o servidor automaticamente
     } else {
-      log(`❌ Server error: ${err.message}`);
+      logger.error("Server error", {
+        error: err,
+        message: err.message,
+      });
       process.exit(1);
     }
   });
@@ -109,22 +144,22 @@ app.use((req, res, next) => {
   // Use 127.0.0.1 in development for security
   const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1';
   server.listen(port, host, () => {
-    log(`serving on ${host}:${port}`);
+    logger.info("Server listening", { host, port, env: process.env.NODE_ENV });
   });
 
   // Graceful shutdown
   process.on('SIGTERM', () => {
-    log('SIGTERM received, shutting down gracefully');
+    logger.info("SIGTERM received, shutting down gracefully");
     server.close(() => {
-      log('Server closed');
+      logger.info("Server closed");
       process.exit(0);
     });
   });
 
   process.on('SIGINT', () => {
-    log('SIGINT received, shutting down gracefully');
+    logger.info("SIGINT received, shutting down gracefully");
     server.close(() => {
-      log('Server closed');
+      logger.info("Server closed");
       process.exit(0);
     });
   });

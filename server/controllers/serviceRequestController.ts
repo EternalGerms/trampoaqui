@@ -4,6 +4,9 @@ import { insertServiceRequestSchema, updateServiceRequestSchema } from "@shared/
 import { authenticateToken } from "../middleware/auth";
 import { validateFutureDateTime } from "../utils/validation";
 import { handleRouteError } from "../utils/errorHandler";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("serviceRequest");
 
 export function registerServiceRequestRoutes(app: Express) {
   // Get service requests for current user (as client)
@@ -13,7 +16,12 @@ export function registerServiceRequestRoutes(app: Express) {
       
       res.json(requests);
     } catch (error) {
-      console.error("Error in client requests route:", error);
+      logger.error("Error in client requests route", {
+        error,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -86,7 +94,12 @@ export function registerServiceRequestRoutes(app: Express) {
         requests
       });
     } catch (error) {
-      console.error("Error in provider requests route:", error);
+      logger.error("Error in provider requests route", {
+        error,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -189,7 +202,11 @@ export function registerServiceRequestRoutes(app: Express) {
       const request = await storage.createServiceRequest(requestData);
       res.json(request);
     } catch (error) {
-      console.error("Validation error:", error);
+      logger.error("Validation error", {
+        error,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       handleRouteError(error, res);
     }
   });
@@ -340,7 +357,14 @@ export function registerServiceRequestRoutes(app: Express) {
       const updatedRequest = await storage.updateServiceRequest(req.params.id, updateData);
       res.json(updatedRequest);
     } catch (error) {
-      console.error("Error updating daily session:", error);
+      logger.error("Error updating daily session", {
+        error,
+        requestId: req.params.id,
+        dayIndex: req.params.dayIndex,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(400).json({ message: "Invalid input data", details: error instanceof Error ? error.message : "Unknown error" });
     }
   });
@@ -451,7 +475,11 @@ export function registerServiceRequestRoutes(app: Express) {
       const updatedRequest = await storage.updateServiceRequest(req.params.id, updateData);
       res.json(updatedRequest);
     } catch (error) {
-      console.error("Validation error:", error);
+      logger.error("Validation error", {
+        error,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       handleRouteError(error, res);
     }
   });

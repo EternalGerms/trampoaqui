@@ -5,6 +5,9 @@ import { z } from "zod";
 import { authenticateToken } from "../middleware/auth";
 import { validateFutureDateTime } from "../utils/validation";
 import { handleRouteError } from "../utils/errorHandler";
+import { createLogger } from "../utils/logger.js";
+
+const logger = createLogger("negotiation");
 
 export function registerNegotiationRoutes(app: Express) {
   // Create negotiation
@@ -26,7 +29,13 @@ export function registerNegotiationRoutes(app: Express) {
       
       res.json(createdNegotiation);
     } catch (error) {
-      console.error("Error creating negotiation:", error);
+      logger.error("Error creating negotiation", {
+        error,
+        userId: req.user?.userId,
+        requestId: req.body.requestId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       handleRouteError(error, res);
     }
   });
@@ -118,7 +127,14 @@ export function registerNegotiationRoutes(app: Express) {
       
       res.json({ message: "Negotiation status updated" });
     } catch (error) {
-      console.error("Error updating negotiation status:", error);
+      logger.error("Error updating negotiation status", {
+        error,
+        negotiationId: req.params.id,
+        userId: req.user?.userId,
+        status: req.body.status,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -129,7 +145,13 @@ export function registerNegotiationRoutes(app: Express) {
       const negotiations = await storage.getNegotiationsByRequest(req.params.id);
       res.json(negotiations);
     } catch (error) {
-      console.error("Error getting negotiations:", error);
+      logger.error("Error getting negotiations", {
+        error,
+        requestId: req.params.id,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -231,7 +253,13 @@ export function registerNegotiationRoutes(app: Express) {
         originalNegotiationId: req.params.id
       });
     } catch (error) {
-      console.error("Error creating counter proposal:", error);
+      logger.error("Error creating counter proposal", {
+        error,
+        negotiationId: req.params.id,
+        userId: req.user?.userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       handleRouteError(error, res);
     }
   });

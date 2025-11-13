@@ -26,6 +26,9 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, avg, count, or, gte, lte } from "drizzle-orm";
+import { createLogger } from "./utils/logger.js";
+
+const logger = createLogger("storage");
 
 export interface IStorage {
   // User operations
@@ -154,7 +157,11 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return user;
     } catch (error) {
-      console.error("❌ Error creating user in database:", error);
+      logger.error("Error creating user in database", {
+        error,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       // Lançar o erro novamente para que a rota possa capturá-lo e enviar uma resposta 500
       throw error;
     }
