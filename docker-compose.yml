@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -28,6 +26,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Use host network for build to access DNS (helps with Windows Docker Desktop DNS issues)
+      network: host
     container_name: trampoaqui-api
     restart: unless-stopped
     env_file:
@@ -50,7 +50,7 @@ services:
     volumes:
       - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health", "||", "exit", "1"]
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:5000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})\""]
       interval: 30s
       timeout: 10s
       retries: 3

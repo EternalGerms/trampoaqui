@@ -34,7 +34,9 @@ FROM node:18-slim AS production
 WORKDIR /app
 
 # Install dumb-init for proper signal handling
-RUN apt-get update && apt-get install -y dumb-init && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends dumb-init && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create non-root user using Debian-compatible commands
 RUN addgroup --system --gid 1001 nodejs
