@@ -6,25 +6,6 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue.svg)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 
-## 📋 Sumário
-
-- [Sobre o Projeto](#sobre-o-projeto)
-- [Características Principais](#características-principais)
-- [Tecnologias e Ferramentas](#tecnologias-e-ferramentas)
-- [Arquitetura do Sistema](#arquitetura-do-sistema)
-- [Pré-requisitos](#pré-requisitos)
-- [Instalação e Configuração](#instalação-e-configuração)
-- [Executando o Projeto](#executando-o-projeto)
-- [Documentação da API](#documentação-da-api)
-- [Estrutura do Projeto](#estrutura-do-projeto)
-- [Banco de Dados](#banco-de-dados)
-- [Variáveis de Ambiente](#variáveis-de-ambiente)
-- [Testes](#testes)
-- [Deploy](#deploy)
-- [Contribuindo](#contribuindo)
-- [Licença](#licença)
-- [Referências](#referências)
-
 ## 🎯 Sobre o Projeto
 
 ### Introdução
@@ -40,22 +21,6 @@ O projeto tem como objetivos principais:
 3. **Validar o sistema** através de testes funcionais
 4. **Analisar o impacto social e econômico** dentro de uma comunidade local ao utilizar o sistema
 
-### Justificativa
-
-A razão da existência desse sistema pode ser justificada em três campos:
-
-- **Área Científica**: O projeto contribui em futuras soluções tecnológicas voltadas à economia colaborativa, explorando conceitos de desenvolvimento web, segurança da informação e usabilidade.
-
-- **Área Social**: A adoção do sistema em comunidades locais pode aumentar a qualidade de vida dos moradores visto a facilidade na contratação de serviços gerais e essenciais, o que incentiva a economia local e contribui na qualificação de profissionais autônomos.
-
-- **Área Pessoal**: O trabalho amplia o conhecimento do autor no desenvolvimento de sistemas, proporcionando uma experiência prática na criação de soluções tecnológicas ao implementar os fundamentos da engenharia de software e desenvolvimento web.
-
-### Status do Projeto
-
-✅ **Status**: Sistema funcional e em produção
-
-O sistema encontra-se em estágio de desenvolvimento funcional, com as principais funcionalidades implementadas e testadas. O projeto atende aos objetivos propostos, com funcionalidades de gerenciamento de usuários, busca de serviços e um sistema de avaliação.
-
 ## ✨ Características Principais
 
 ### Funcionalidades Implementadas
@@ -65,33 +30,10 @@ O sistema encontra-se em estágio de desenvolvimento funcional, com as principai
 - ✅ **Sistema de Avaliação**: Avaliação mútua entre profissionais e contratantes
 - ✅ **Sistema de Pagamento**: Pagamento antecipado com retenção de valor
 - ✅ **Sistema de Negociações**: Propostas e contrapropostas de valores
-- ✅ **Sistema de Mensagens**: Comunicação entre usuários
 - ✅ **Painel Administrativo**: Gerenciamento de usuários, serviços e categorias
 - ✅ **Sistema de Saques**: Saques para prestadores de serviços
 - ✅ **Verificação de Email**: Confirmação de conta por email
 - ✅ **Serviços Diários**: Suporte para múltiplas sessões de serviço
-
-### Requisitos Funcionais Atendidos
-
-| Código | Descrição | Status |
-|--------|-----------|--------|
-| RF01 | Cadastro de novos usuários como cliente ou prestador | ✅ Implementado |
-| RF02 | Login com e-mail e senha | ✅ Implementado |
-| RF03 | Edição de dados pessoais | ✅ Implementado |
-| RF04 | Prestador editar perfil | ✅ Implementado |
-| RF05 | Validação de dados antes do cadastro | ✅ Implementado |
-| RF06 | Exclusão de conta | ✅ Implementado |
-| RF07 | Lista de categorias de serviços | ✅ Implementado |
-| RF08 | Visualizar prestadores disponíveis por categoria | ✅ Implementado |
-| RF09 | Visualizar detalhes do perfil de um prestador | ✅ Implementado |
-| RF10 | Pagamento antecipado com retenção do valor | ✅ Implementado |
-| RF11 | Cliente avaliar prestador após conclusão | ✅ Implementado |
-| RF12 | Exibir média de avaliação no card do prestador | ✅ Implementado |
-| RF13 | Prestador avaliar cliente após o serviço | ✅ Implementado |
-| RF14 | Administradores gerenciarem usuários e serviços | ✅ Implementado |
-| RF15 | Gerar relatórios sobre serviços solicitados | ⚠️ Parcial |
-| RF16 | Exibir serviços próximos baseando-se em geolocalização | ❌ Não implementado |
-| RF17 | Considerar "nível de confiança" do prestador | ❌ Não implementado |
 
 ## 🛠️ Tecnologias e Ferramentas
 
@@ -148,34 +90,6 @@ O projeto utiliza uma stack moderna e robusta, escolhida para garantir escalabil
 | Nodemailer | Email | Envio de emails | 6.9.14 |
 
 ## 🏗️ Arquitetura do Sistema
-
-### Modelo Arquitetural
-
-A arquitetura do sistema segue um **modelo monolítico com separação de camadas**, onde a lógica de negócio, o acesso a dados e a interface do usuário são módulos distintos dentro de uma única aplicação. Essa abordagem foi escolhida por simplificar o desenvolvimento, testes e implantação para o escopo atual do projeto, ao mesmo tempo que permite uma fácil manutenção e escalabilidade futura.
-
-### Estrutura de Camadas
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Camada de Apresentação                │
-│  (React + TypeScript + Tailwind CSS + Shadcn/UI)        │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│                   Camada de API REST                    │
-│        (Express.js + TypeScript + JWT Auth)             │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│                  Camada de Lógica de Negócio            │
-│           (Controllers + Services + Validation)         │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│                  Camada de Acesso a Dados               │
-│           (Drizzle ORM + PostgreSQL)                    │
-└─────────────────────────────────────────────────────────┘
-```
 
 ### Fluxo de Dados
 
@@ -273,6 +187,9 @@ O banco de dados será configurado automaticamente ao iniciar o Docker Compose. 
 Para executar o projeto em modo de desenvolvimento localmente:
 
 ```bash
+# Iniciar banco de dados (docker)
+docker compose up -d postgres
+
 # Iniciar servidor de desenvolvimento (frontend e backend)
 npm run dev
 
@@ -1212,44 +1129,6 @@ Obtém todas as avaliações recebidas por um usuário.
 
 Obtém todas as avaliações enviadas por um usuário.
 
-#### Mensagens
-
-##### `POST /api/messages`
-
-Cria uma nova mensagem.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Requisição**:
-```json
-{
-  "content": "Olá, gostaria de mais informações sobre o serviço",
-  "receiverId": "uuid",
-  "requestId": "uuid"
-}
-```
-
-**Resposta de Sucesso (200)**:
-```json
-{
-  "id": "uuid",
-  "senderId": "uuid",
-  "receiverId": "uuid",
-  "requestId": "uuid",
-  "content": "Olá, gostaria de mais informações sobre o serviço",
-  "isRead": false,
-  "createdAt": "2025-01-01T00:00:00.000Z"
-}
-```
-
-##### `GET /api/messages/conversation/:userId`
-
-Obtém a conversa entre o usuário autenticado e outro usuário.
-
-**Headers**: `Authorization: Bearer <token>`
-
-##### `GET /api/messages/received`
-
 Obtém todas as mensagens recebidas pelo usuário autenticado.
 
 **Headers**: `Authorization: Bearer <token>`
@@ -1443,66 +1322,6 @@ Para erros de validação (400), a resposta pode incluir detalhes:
 }
 ```
 
-## 📁 Estrutura do Projeto
-
-```
-TrampoAqui/
-├── client/                 # Frontend (React + TypeScript)
-│   ├── src/
-│   │   ├── components/     # Componentes React reutilizáveis
-│   │   │   ├── ui/         # Componentes UI (Shadcn/UI)
-│   │   │   └── ...         # Componentes específicos da aplicação
-│   │   ├── pages/          # Páginas da aplicação
-│   │   ├── hooks/          # Custom hooks
-│   │   ├── lib/            # Bibliotecas e utilitários
-│   │   ├── utils/          # Funções utilitárias
-│   │   └── constants/      # Constantes da aplicação
-│   └── index.html          # HTML principal
-├── server/                 # Backend (Express + TypeScript)
-│   ├── controllers/        # Controladores das rotas
-│   ├── middleware/         # Middlewares (autenticação, etc.)
-│   ├── utils/              # Utilitários do servidor
-│   ├── types/              # Tipos TypeScript específicos
-│   ├── storage.ts          # Camada de acesso a dados
-│   ├── db.ts               # Configuração do banco de dados
-│   ├── routes.ts           # Registro de rotas
-│   └── index.ts            # Ponto de entrada do servidor
-├── shared/                 # Código compartilhado
-│   └── schema.ts           # Schema do banco de dados (Drizzle)
-├── init-db/                # Scripts de inicialização do banco
-│   └── 01-init-schema.sql  # Script SQL de criação das tabelas
-├── scripts/                # Scripts auxiliares
-│   ├── clear-db.ts         # Script para limpar banco de dados
-│   └── ...                 # Outros scripts
-├── dist/                   # Build de produção
-├── logs/                   # Logs da aplicação
-├── docker-compose.yml      # Configuração Docker Compose
-├── Dockerfile              # Dockerfile para produção
-├── Dockerfile.dev          # Dockerfile para desenvolvimento
-├── package.json            # Dependências e scripts
-├── tsconfig.json           # Configuração TypeScript
-├── vite.config.ts          # Configuração Vite
-├── tailwind.config.ts      # Configuração Tailwind CSS
-├── drizzle.config.ts       # Configuração Drizzle ORM
-└── README.md               # Este arquivo
-```
-
-### Descrição dos Diretórios Principais
-
-#### `client/`
-Contém toda a aplicação frontend desenvolvida em React com TypeScript. Utiliza Vite como build tool, Tailwind CSS para estilização e Shadcn/UI para componentes.
-
-#### `server/`
-Contém a aplicação backend desenvolvida em Express.js com TypeScript. Segue o padrão MVC com controllers, middleware e camada de acesso a dados.
-
-#### `shared/`
-Contém código compartilhado entre frontend e backend, principalmente o schema do banco de dados definido com Drizzle ORM.
-
-#### `init-db/`
-Contém scripts SQL que são executados automaticamente quando o PostgreSQL é iniciado pela primeira vez, criando todas as tabelas necessárias.
-
-#### `scripts/`
-Contém scripts auxiliares para desenvolvimento, como limpeza do banco de dados e migrações.
 
 ## 🗄️ Banco de Dados
 
@@ -1711,110 +1530,6 @@ APP_NAME=TrampoAqui
 # SSL_KEY=/path/to/key.pem
 ```
 
-> **Importante**: Nunca commite o arquivo `.env` no repositório. Use `.env.example` como template.
-
-## 🧪 Testes
-
-Atualmente, o sistema não possui testes automatizados implementados. Os testes foram realizados manualmente através de fluxos de ponta a ponta, incluindo:
-
-- Cadastro de novo usuário
-- Busca por serviço ou categoria
-- Simulação do processo de agendamento
-- Processo de avaliação
-
-### Testes Futuros
-
-Para implementar testes automatizados, recomenda-se:
-
-1. **Testes Unitários**: Jest ou Vitest para testar funções e utilitários
-2. **Testes de Integração**: Testar endpoints da API
-3. **Testes E2E**: Cypress ou Playwright para testar fluxos completos
-
-### Executando Testes (Quando Implementados)
-
-```bash
-# Executar todos os testes
-npm test
-
-# Executar testes em modo watch
-npm run test:watch
-
-# Executar testes com cobertura
-npm run test:coverage
-```
-
-## 🚢 Deploy
-
-### Deploy com Docker
-
-O projeto está configurado para deploy usando Docker Compose. Para fazer deploy em produção:
-
-1. **Configurar variáveis de ambiente**:
-   ```bash
-   cp .env.example .env
-   # Editar .env com valores de produção
-   ```
-
-2. **Construir e iniciar os serviços**:
-   ```bash
-   docker compose build
-   docker compose up -d
-   ```
-
-3. **Verificar o status**:
-   ```bash
-   docker compose ps
-   docker compose logs -f
-   ```
-
-### Deploy em Servidor
-
-Para deploy em um servidor (VPS, AWS, etc.):
-
-1. **Instalar Docker e Docker Compose** no servidor
-2. **Clonar o repositório** no servidor
-3. **Configurar variáveis de ambiente** para produção
-4. **Configurar domínio** e certificados SSL (Let's Encrypt)
-5. **Configurar reverse proxy** (Nginx) para roteamento
-6. **Iniciar os serviços** com Docker Compose
-
-### Configuração de Produção
-
-Para produção, recomenda-se:
-
-- Usar variáveis de ambiente seguras
-- Configurar HTTPS com certificados SSL
-- Configurar backup automático do banco de dados
-- Configurar monitoramento e logs
-- Configurar rate limiting
-- Configurar CORS adequadamente
-- Usar secrets management (Docker Secrets, AWS Secrets Manager, etc.)
-
-## 🤝 Contribuindo
-
-Contribuições são bem-vindas! Para contribuir com o projeto:
-
-1. **Fork o repositório**
-2. **Crie uma branch** para sua feature (`git checkout -b feature/nova-funcionalidade`)
-3. **Faça commit** das suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
-4. **Push para a branch** (`git push origin feature/nova-funcionalidade`)
-5. **Abra um Pull Request**
-
-### Padrões de Código
-
-- Use TypeScript para todo o código
-- Siga os padrões de código existentes
-- Adicione comentários quando necessário
-- Escreva código limpo e legível
-- Teste suas mudanças antes de fazer commit
-
-### Processo de Pull Request
-
-1. Descreva claramente as mudanças propostas
-2. Inclua exemplos de uso, se aplicável
-3. Certifique-se de que o código compila sem erros
-4. Atualize a documentação, se necessário
-
 ## 📄 Licença
 
 Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
@@ -1825,38 +1540,6 @@ Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICE
 - **Prof. Viviane de Fátima Bartholo** - Orientação
 
 ## 📚 Referências
-
-### Referências Acadêmicas
-
-- SOMMERVILLE, Ian. **Engenharia de Software**. 10. ed. São Paulo: Pearson, 2011.
-
-- PRESSMAN, Roger S. **Engenharia de Software: Uma Abordagem Profissional**. 8. ed. Porto Alegre: AMGH, 2015.
-
-- FOWLER, Martin. **Padrões de Arquitetura de Aplicações Corporativas**. Porto Alegre: Bookman, 2023.
-
-- FREEMAN, Adam. **Pro TypeScript: Application-Scale JavaScript Development**. 4. ed. New York: Apress, 2019.
-
-- SILBERSCHATZ, Abraham; GALVIN, Peter Baer; GAGNE, Greg. **Sistemas Operacionais: Conceitos e Aplicações**. 10. ed. Rio de Janeiro: LTC, 2020.
-
-### Trabalhos Correlatos
-
-- **Paraná Serviços**: Aplicativo lançado pelo Governo do Estado do Paraná que conecta contratantes a profissionais autônomos. Disponível em: https://play.google.com/store/apps/details?id=br.gov.pr.celepar.paranaautonomo
-
-- **Home Easy**: Sistema que visa facilitar a contratação de serviços manuais, aumentando a visibilidade dos profissionais. Fonte: Revista FT.
-
-- **Bazzu**: Sistema web para contratação de serviços que adota princípios de arquitetura escalável e modularidade.
-
-### Documentação de Tecnologias
-
-- [Node.js Documentation](https://nodejs.org/docs/)
-- [Express.js Documentation](https://expressjs.com/)
-- [React Documentation](https://react.dev/)
-- [TypeScript Documentation](https://www.typescriptlang.org/docs/)
-- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
-- [Drizzle ORM Documentation](https://orm.drizzle.team/)
-- [Docker Documentation](https://docs.docker.com/)
-- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
-- [Shadcn/UI Documentation](https://ui.shadcn.com/)
 
 ### APIs Externas
 
