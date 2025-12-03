@@ -18,6 +18,105 @@ function escapeHtml(unsafe: string): string {
     .replace(/'/g, "&#039;");
 }
 
+// Função para escapar componentes de URL de forma segura
+function escapeUrlComponent(str: string): string {
+  try {
+    // Remove caracteres perigosos antes de fazer encoding
+    const cleaned = str.replace(/[<>"']/g, '');
+    return encodeURIComponent(cleaned);
+  } catch {
+    return '';
+  }
+}
+
+// Função para normalizar e validar path, prevenindo path traversal
+function normalizePath(pathStr: string): string | null {
+  if (!pathStr || typeof pathStr !== 'string') {
+    return null;
+  }
+
+  // Remover query strings e fragments
+  const pathOnly = pathStr.split('?')[0].split('#')[0];
+
+  // Validar que o path é relativo (começa com / ou é vazio)
+  if (pathOnly && !pathOnly.startsWith('/')) {
+    return null;
+  }
+
+  // Normalizar o path (resolve .., ., etc.)
+  let normalized: string;
+  try {
+    normalized = path.normalize(pathOnly || '/');
+  } catch {
+    return null;
+  }
+
+  // Garantir que sempre comece com /
+  if (!normalized.startsWith('/')) {
+    normalized = '/' + normalized;
+  }
+
+  // Validar contra path traversal (não deve conter .. após normalização)
+  if (normalized.includes('..') || normalized.includes('\0')) {
+    return null;
+  }
+
+  // Remover caracteres perigosos e não permitidos em paths
+  const dangerousChars = /[<>"|*?\\]/;
+  if (dangerousChars.test(normalized)) {
+    return null;
+  }
+
+  // Limitar comprimento do path
+  if (normalized.length > 2048) {
+    return null;
+  }
+
+  return normalized;
+}
+
+// Função robusta para sanitizar URL completa
+function sanitizeUrl(url: string): string {
+  if (!url || typeof url !== 'string') {
+    return '/';
+  }
+
+  // Extrair apenas o path (sem query strings e fragments)
+  let urlPath = url.split('?')[0].split('#')[0];
+
+  // Normalizar o path
+  const normalized = normalizePath(urlPath);
+  
+  if (!normalized) {
+    // Se normalização falhou, retornar path seguro padrão
+    return '/';
+  }
+
+  // Decodificar URL encoding antes de validar
+  try {
+    urlPath = decodeURIComponent(normalized);
+  } catch {
+    // Se decoding falhar, usar versão normalizada
+    urlPath = normalized;
+  }
+
+  // Re-validar após decode
+  const reNormalized = normalizePath(urlPath);
+  return reNormalized || '/';
+}
+
+// Função para sanitizar URL para logs (não pode conter caracteres de controle)
+function sanitizeUrlForLog(url: string): string {
+  if (!url || typeof url !== 'string') {
+    return '[invalid-url]';
+  }
+  
+  // Remover caracteres de controle e limitar tamanho
+  return url
+    .replace(/[\x00-\x1F\x7F]/g, '') // Remove control characters
+    .substring(0, 500); // Limita tamanho
+}
+
 // Rate limiter simples em memória
 const rateLimiter = new Map<string, { count: number; resetTime: number }>();
 const RATE_LIMIT_WINDOW = 60000; // 1 minuto
@@ -71,10 +170,10 @@ export async function setupVite(app: Express, server: Server) {
   // Lidar apenas com rotas não-API com o catch-all
   // Use app.all to catch all HTTP methods
   app.all("*", async (req, res, next) => {
-    const url = req.originalUrl;
+    const originalUrl = req.originalUrl;
     
     // Pular rotas da API - deixar serem tratadas pelo middleware da API
-    if (url.startsWith("/api")) {
+    if (originalUrl.startsWith("/api")) {
       return next();
     }
 
@@ -103,8 +202,8 @@ export async function setupVite(app: Express, server: Server) {
         return res.status(500).send("Template file not found");
       }
 
-      // Sanitizar URL para prevenir XSS
-      const sanitizedUrl = url.replace(/[<>"'&]/g, '');
+      // Sanitizar URL de forma robusta para prevenir XSS e path traversal
+      const sanitizedUrl = sanitizeUrl(originalUrl);
 
       // sempre recarregar o arquivo index.html do disco caso ele mude
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
@@ -117,9 +216,19 @@ export async function setupVite(app: Express, server: Server) {
       const safePage = page.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, (match) => {
         return match.includes('src=') ? match : escapeHtml(match);
       });
-      res.status(200).set({ "Content-Type": "text/html" }).end(safePage);
+      
+      // Adicionar headers de segurança
+      res.status(200).set({
+        "Content-Type": "text/html",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "X-XSS-Protection": "1; mode=block",
+        "Referrer-Policy": "strict-origin-when-cross-origin"
+      }).end(safePage);
     } catch (e) {
-      logger.error("Error serving index.html", { error: e, url });
+      // Sanitizar URL para logs também
+      const safeUrlForLog = sanitizeUrlForLog(originalUrl);
+      logger.error("Error serving index.html", { error: e, url: safeUrlForLog });
       vite.ssrFixStacktrace(e as Error);
       next(e);
     }
@@ -158,6 +267,7 @@ export function serveStatic(app: Express) {
   // Custom static file middleware that doesn't send 404s
   app.use((req, res, next) => {
     const url = req.originalUrl;
+    const safeUrlForLog = sanitizeUrlForLog(url);
     
     // Skip API routes
     if (url.startsWith("/api")) {
@@ -173,7 +283,7 @@ export function serveStatic(app: Express) {
       
       // Security check: ensure the resolved path is within distPath
       if (!resolvedPath.startsWith(distPathResolved)) {
-        staticLogger.warn("Security check failed", { resolvedPath, distPathResolved, url });
+        staticLogger.warn("Security check failed", { resolvedPath, distPathResolved, url: safeUrlForLog });
         return next();
       }
       
@@ -181,10 +291,10 @@ export function serveStatic(app: Express) {
       if (fs.existsSync(resolvedPath)) {
         const stats = fs.statSync(resolvedPath);
         if (stats.isFile()) {
-          staticLogger.debug("Serving file", { url, resolvedPath });
+          staticLogger.debug("Serving file", { url: safeUrlForLog, resolvedPath });
           return res.sendFile(resolvedPath, (err) => {
             if (err) {
-              staticLogger.error("Error sending file", { error: err, resolvedPath, url });
+              staticLogger.error("Error sending file", { error: err, resolvedPath, url: safeUrlForLog });
               next(err);
             }
           });
@@ -192,10 +302,10 @@ export function serveStatic(app: Express) {
       }
       
       // File doesn't exist, continue to catch-all
-      staticLogger.debug("File not found, continuing to catch-all", { url });
+      staticLogger.debug("File not found, continuing to catch-all", { url: safeUrlForLog });
       next();
     } catch (error) {
-      staticLogger.error("Error in static middleware", { error, url });
+      staticLogger.error("Error in static middleware", { error, url: safeUrlForLog });
       next(error);
     }
   });
@@ -210,19 +320,20 @@ export function serveStatic(app: Express) {
     }
     
     // Only handle GET requests for serving HTML
+    const safeUrlForLog = sanitizeUrlForLog(url);
     if (req.method !== "GET") {
-      staticLogger.debug("Catch-all skipping non-GET request", { method: req.method, url });
+      staticLogger.debug("Catch-all skipping non-GET request", { method: req.method, url: safeUrlForLog });
       return next();
     }
     
     // Skip if response already sent (static file was found)
     if (res.headersSent) {
-      staticLogger.debug("Catch-all skipping, response already sent", { url });
+      staticLogger.debug("Catch-all skipping, response already sent", { url: safeUrlForLog });
       return next();
     }
     
     try {
-      staticLogger.debug("Catch-all route serving index.html", { url });
+      staticLogger.debug("Catch-all route serving index.html", { url: safeUrlForLog });
       
       const indexPath = path.resolve(distPath, "index.html");
       if (!fs.existsSync(indexPath)) {
@@ -230,17 +341,17 @@ export function serveStatic(app: Express) {
         return res.status(500).send("index.html not found");
       }
       
-      staticLogger.debug("Sending index.html", { indexPath, url });
+      staticLogger.debug("Sending index.html", { indexPath, url: safeUrlForLog });
       res.sendFile(indexPath, (err) => {
         if (err) {
-          staticLogger.error("Error sending index.html", { error: err, indexPath, url });
+          staticLogger.error("Error sending index.html", { error: err, indexPath, url: safeUrlForLog });
           next(err);
         } else {
-          staticLogger.debug("Successfully sent index.html", { url });
+          staticLogger.debug("Successfully sent index.html", { url: safeUrlForLog });
         }
       });
     } catch (error) {
-      staticLogger.error("Error in catch-all", { error, url });
+      staticLogger.error("Error in catch-all", { error, url: safeUrlForLog });
       next(error);
     }
   });
