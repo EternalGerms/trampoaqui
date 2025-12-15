@@ -10,13 +10,13 @@ import { createLogger } from "../utils/logger.js";
 const logger = createLogger("negotiation");
 
 export function registerNegotiationRoutes(app: Express) {
-  // Create negotiation
+  // Cria negociação
   app.post("/api/negotiations", authenticateToken, async (req: Request, res: Response) => {
     try {
-      // Parse the request body without proposerId since we'll add it
+      // Faz parse do corpo sem proposerId (será adicionado abaixo)
       const negotiationData = insertNegotiationSchema.omit({ proposerId: true }).parse(req.body);
       
-      // Add the proposer ID from the authenticated user
+      // Adiciona o proposerId do usuário autenticado
       const negotiation = {
         ...negotiationData,
         proposerId: req.user!.userId,
@@ -24,7 +24,7 @@ export function registerNegotiationRoutes(app: Express) {
       
       const createdNegotiation = await storage.createNegotiation(negotiation);
       
-      // Update request status to negotiating if it was pending
+      // Se estava pendente, muda a solicitação para negotiating
       await storage.updateRequestStatus(negotiation.requestId, 'negotiating');
       
       res.json(createdNegotiation);
@@ -40,7 +40,7 @@ export function registerNegotiationRoutes(app: Express) {
     }
   });
 
-  // Update negotiation status
+  // Atualiza status da negociação
   app.put("/api/negotiations/:id/status", authenticateToken, async (req: Request, res: Response) => {
     try {
       const { status } = req.body;
@@ -49,19 +49,19 @@ export function registerNegotiationRoutes(app: Express) {
         return res.status(400).json({ message: "Invalid status. Must be 'accepted' or 'rejected'" });
       }
       
-      // Get the current negotiation
+      // Busca a negociação atual
       const currentNegotiation = await storage.getNegotiationById(req.params.id);
       if (!currentNegotiation) {
         return res.status(404).json({ message: "Negotiation not found" });
       }
       
-      // Check if user is authorized to respond to this negotiation
+      // Verifica se o usuário pode responder a esta negociação
       const request = await storage.getServiceRequest(currentNegotiation.requestId);
       if (!request) {
         return res.status(404).json({ message: "Service request not found" });
       }
       
-      // User can only respond if they are the client or provider of the request
+      // Só cliente ou prestador podem responder
       const isClient = request.clientId === req.user!.userId;
       const provider = request.providerId ? await storage.getServiceProvider(request.providerId) : null;
       const isProvider = provider && provider.userId === req.user!.userId;
@@ -70,20 +70,20 @@ export function registerNegotiationRoutes(app: Express) {
         return res.status(403).json({ message: "Unauthorized to respond to this negotiation" });
       }
       
-      // User cannot respond to their own negotiation
+      // O proponente não pode responder à própria negociação
       if (currentNegotiation.proposerId === req.user!.userId) {
         return res.status(400).json({ message: "Cannot respond to your own negotiation" });
       }
       
-      // Accept or reject the negotiation
+      // Aceita ou rejeita a negociação
       await storage.updateNegotiationStatus(req.params.id, status);
       
-      // If accepted, update the request with the accepted negotiation details
+      // Se aceita, atualiza a solicitação com os dados da negociação
       if (status === 'accepted') {
-        // Ensure proposedPrice is always set when accepting a negotiation
+        // Garante proposedPrice preenchido ao aceitar
         let finalProposedPrice: string | undefined = currentNegotiation.proposedPrice?.toString();
         
-        // If proposedPrice is not set in the negotiation, calculate it based on pricing type and provider rates
+        // Se não houver proposedPrice, calcula com base no tipo e nas tarifas do prestador
         if (!finalProposedPrice && provider) {
           let calculatedPrice: number | null = null;
           
@@ -110,7 +110,7 @@ export function registerNegotiationRoutes(app: Express) {
           }
         }
         
-        // Fallback to request's proposedPrice if negotiation doesn't have one and we couldn't calculate it
+        // Usa proposedPrice da solicitação se não houver na negociação
         if (!finalProposedPrice && request.proposedPrice) {
           finalProposedPrice = request.proposedPrice.toString();
         }
@@ -139,7 +139,7 @@ export function registerNegotiationRoutes(app: Express) {
     }
   });
 
-  // Get negotiations by request ID
+  // Lista negociações por ID da solicitação
   app.get("/api/requests/:id/negotiations", authenticateToken, async (req: Request, res: Response) => {
     try {
       const negotiations = await storage.getNegotiationsByRequest(req.params.id);
@@ -156,16 +156,16 @@ export function registerNegotiationRoutes(app: Express) {
     }
   });
 
-  // Create counter proposal
+  // Cria contraproposta
   app.post("/api/negotiations/:id/counter-proposal", authenticateToken, async (req: Request, res: Response) => {
     try {
-      // Get the current negotiation first
+      // Busca a negociação atual
       const currentNegotiation = await storage.getNegotiationById(req.params.id);
       if (!currentNegotiation) {
         return res.status(404).json({ message: "Negotiation not found" });
       }
       
-      // Create a schema for counter proposal data (without requestId and proposerId)
+      // Schema da contraproposta (sem requestId e proposerId)
       const counterProposalSchema = z.object({
         pricingType: z.enum(['hourly', 'daily', 'fixed']),
         proposedPrice: z.union([z.string(), z.number()]).optional().transform((val) => {
@@ -195,7 +195,7 @@ export function registerNegotiationRoutes(app: Express) {
         message: z.string().min(1, "Message is required"),
       });
 
-      // Validate and transform the request body using the counter proposal schema
+      // Valida e transforma o corpo usando o schema da contraproposta
       const validatedData = counterProposalSchema.parse({
         pricingType: req.body.pricingType,
         proposedPrice: req.body.proposedPrice,
@@ -205,13 +205,13 @@ export function registerNegotiationRoutes(app: Express) {
         message: req.body.message,
       });
       
-      // Check if user is authorized to respond to this negotiation
+      // Verifica se o usuário pode responder a esta negociação
       const request = await storage.getServiceRequest(currentNegotiation.requestId);
       if (!request) {
         return res.status(404).json({ message: "Service request not found" });
       }
       
-      // User can only respond if they are the client or provider of the request
+      // Só cliente ou prestador podem responder
       const isClient = request.clientId === req.user!.userId;
       const isProvider = request.providerId && (await storage.getServiceProvider(request.providerId))?.userId === req.user!.userId;
       
@@ -219,12 +219,12 @@ export function registerNegotiationRoutes(app: Express) {
         return res.status(403).json({ message: "Unauthorized to respond to this negotiation" });
       }
       
-      // User cannot respond to their own negotiation
+      // O proponente não pode responder à própria negociação
       if (currentNegotiation.proposerId === req.user!.userId) {
         return res.status(400).json({ message: "Cannot respond to your own negotiation" });
       }
       
-      // Validate required fields
+      // Valida campos obrigatórios
       if (!validatedData.pricingType || !validatedData.message) {
         return res.status(400).json({ message: "pricingType and message are required" });
       }
@@ -237,14 +237,14 @@ export function registerNegotiationRoutes(app: Express) {
         }
       }
       
-      // Create a new negotiation as a counter proposal
+      // Cria nova negociação como contraproposta
       const counterNegotiation = await storage.createNegotiation({
         ...validatedData,
         requestId: currentNegotiation.requestId,
         proposerId: req.user!.userId,
       });
       
-      // Mark the current negotiation as responded to
+      // Marca a negociação atual como respondida
       await storage.updateNegotiationStatus(req.params.id, 'counter_proposed');
       
       res.json({ 

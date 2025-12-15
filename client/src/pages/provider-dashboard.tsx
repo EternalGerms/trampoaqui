@@ -66,8 +66,8 @@ const counterProposalSchema = z.object({
   proposedTime: z.string().optional(),
   message: z.string().min(10, "Mensagem deve ter pelo menos 10 caracteres"),
 }).refine((data) => {
-  // Ensure at least one field has changed from the original request
-  return true; // This will be validated in the submit handler
+  // Garante que ao menos um campo mudou em relação à solicitação original
+  return true; // Validação final acontece no submit handler
 }, {
   message: "Você deve alterar pelo menos um campo para enviar uma contraproposta",
 }).refine((data) => {
@@ -344,7 +344,7 @@ export default function ProviderDashboard() {
     invalidateQueries: ["/api/requests/provider"],
   });
 
-  // Create review mutation
+  // Cria mutation para enviar avaliação
   const createReviewMutation = useMutationWithToast({
     mutationFn: async (data: ReviewForm) => {
       const payload = {
@@ -369,18 +369,17 @@ export default function ProviderDashboard() {
     },
   });
 
-  // Function to open client review dialog
+  // Abre o diálogo de avaliação do cliente
   const handleOpenClientReviewDialog = (request: RequestWithClient) => {
     setSelectedRequestForClientReview(request);
     setClientReviewDialogOpen(true);
   };
 
-  // Function to check if a negotiation can have actions
-  // This prevents showing action buttons on older negotiations when a newer counter-proposal is pending
+  // Verifica se a negociação pode exibir ações (apenas a mais recente pendente de outro usuário)
   const canNegotiationHaveActions = (request: RequestWithClient, negotiation: any) => {
     if (!request.negotiations || request.negotiations.length === 0) return false;
     
-    // Find the most recent negotiation (regardless of status)
+    // Ordena pela negociação mais recente
     const allNegotiations = request.negotiations
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     
@@ -388,35 +387,25 @@ export default function ProviderDashboard() {
     
     const mostRecentNegotiation = allNegotiations[0];
     
-    // Only the most recent negotiation can have actions
-    // AND it must not be from the current user (prestador)
-    // AND it must be pending
-    // This ensures that older negotiations (even if pending) are never alterable
-    // 
-    // Example: If there are 3 negotiations:
-    // 1. Original proposal (pending) - CAN have actions
-    // 2. Counter-proposal from provider (pending) - CANNOT have actions (from provider)
-    // 3. Counter-proposal from client (pending) - CAN have actions (most recent, from client)
-    // 4. After accepting/rejecting #3, none of the above can have actions
+    // Só a mais recente, pendente e não criada pelo prestador pode ter ações
     return negotiation.id === mostRecentNegotiation.id && 
            negotiation.proposer.id !== user?.id && 
            negotiation.status === 'pending';
   };
 
-  // Function to get the effective status of a negotiation
-  // This handles the logic for showing "Recusado" vs "Substituída" vs "Aguardando resposta"
+  // Calcula o status efetivo da negociação (Recusado/Substituída/Aguardando)
   const getEffectiveNegotiationStatus = (request: RequestWithClient, negotiation: any) => {
-    // If negotiation is already accepted/rejected, return that status
+    // Se já aceito/recusado, retorna direto
     if (negotiation.status !== 'pending') {
       return negotiation.status;
     }
 
-    // Safety check for negotiations array
+    // Guarda-chuva para array vazio
     if (!request.negotiations || request.negotiations.length === 0) {
       return 'pending';
     }
 
-    // Find the most recent negotiation (regardless of status)
+    // Negociação mais recente
     const allNegotiations = request.negotiations
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     
@@ -424,56 +413,54 @@ export default function ProviderDashboard() {
     
     const mostRecentNegotiation = allNegotiations[0];
     
-    // If this is the most recent negotiation
+    // Se for a negociação mais recente
     if (negotiation.id === mostRecentNegotiation.id) {
-      // If it's from the current user (prestador), show "Aguardando resposta"
+      // Se for do prestador atual, mostra "Aguardando resposta"
       if (negotiation.proposer.id === user?.id) {
         return 'pending';
       }
-      // If it's from the client and still pending, show "Aguardando resposta" (can have actions)
+      // Se for do cliente e ainda pendente, mantém "Aguardando resposta" (pode ter ações)
       if (negotiation.status === 'pending') {
         return 'pending';
       }
-      // If it's from the client but was accepted/rejected, return the actual status
+      // Se for do cliente mas já aceito/recusado, devolve status real
       return negotiation.status;
     }
     
-    // If this is an older negotiation, it should be marked as "Recusado"
-    // because a newer proposal has been made or the most recent was acted upon
+    // Negociações antigas ficam como "Recusado" (há proposta mais recente)
     return 'rejected';
   };
 
-  // Function to get the effective request status
-  // This determines if a request should show "Negociando" or "Cancelado"
+  // Calcula o status efetivo da solicitação (Negociando/Cancelado/etc.)
   const getEffectiveRequestStatus = (request: RequestWithClient) => {
-    // If request is already completed, accepted, payment_pending, or cancelled, return that status
+    // Se já estiver completed/accepted/payment_pending/cancelled, retorna direto
     if (['completed', 'accepted', 'payment_pending', 'cancelled'].includes(request.status)) {
       return request.status;
     }
 
-    // If request is pending and has no negotiations, return pending
+    // Se estiver pending sem negociações, mantém pending
     if (request.status === 'pending' && (!request.negotiations || request.negotiations.length === 0)) {
       return 'pending';
     }
 
-    // If request is negotiating, check if all negotiations are rejected
+    // Em negotiating, verifica status da negociação mais recente
     if (request.status === 'negotiating' && request.negotiations && request.negotiations.length > 0) {
       const allNegotiations = request.negotiations
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
       const mostRecentNegotiation = allNegotiations[0];
       
-      // If the most recent negotiation was rejected, the request should be cancelled
+      // Se a mais recente foi rejeitada, cancela a solicitação
       if (mostRecentNegotiation.status === 'rejected') {
         return 'cancelled';
       }
       
-      // If the most recent negotiation was accepted, the request should be accepted
+      // Se a mais recente foi aceita, aceita a solicitação
       if (mostRecentNegotiation.status === 'accepted') {
         return 'accepted';
       }
       
-      // If the most recent negotiation is still pending, keep negotiating
+      // Se a mais recente segue pendente, mantém negotiating
       if (mostRecentNegotiation.status === 'pending') {
         return 'negotiating';
       }
@@ -482,13 +469,13 @@ export default function ProviderDashboard() {
     return request.status;
   };
 
-  // Redirect if not logged in
+  // Redireciona se não estiver logado
   if (!user) {
     setLocation('/login');
     return null;
   }
 
-  // Redirect if user doesn't have provider capability enabled
+  // Redireciona se não for prestador habilitado
   if (!user.isProviderEnabled) {
     setLocation('/dashboard');
     return null;
@@ -541,7 +528,7 @@ export default function ProviderDashboard() {
   const handleCounterProposal = (data: CounterProposalForm) => {
     if (!counterProposalRequestId || !originalRequestData) return;
     
-    // Check if any field has changed from the original request
+    // Verifica se algum campo mudou em relação à solicitação original
     const hasChanges = 
       data.pricingType !== originalRequestData.pricingType ||
       data.proposedPrice !== (originalRequestData.proposedPrice || "") ||
@@ -604,24 +591,24 @@ export default function ProviderDashboard() {
         .filter(r => r.status === 'completed' && r.proposedPrice)
         .reduce((sum, r) => {
           const serviceAmount = parseFloat(r.proposedPrice || "0");
-          const platformFee = serviceAmount * 0.05; // 5% platform fee
+          const platformFee = serviceAmount * 0.05; // Taxa da plataforma (5%)
           const providerAmount = serviceAmount - platformFee;
           return sum + providerAmount;
         }, 0)
     : 0;
 
-  // Function to calculate correct ratings for a service provider, excluding their own reviews
+  // Calcula avaliações do prestador, excluindo reviews feitas por ele mesmo
   const getCorrectRatingForProvider = (serviceProvider: any) => {
     if (!Array.isArray(requests) || requests.length === 0) {
       return { averageRating: 0, reviewCount: 0 };
     }
 
-    // Get all reviews for requests related to this provider
+    // Coleta todas as reviews das solicitações deste prestador
     const allReviews: any[] = [];
     
     requests.forEach(request => {
       if (request.providerId === serviceProvider.id && Array.isArray(request.reviews)) {
-        // Only include reviews where the reviewer is NOT the service provider
+        // Inclui apenas reviews cujo avaliador não é o próprio prestador
         const clientReviews = request.reviews.filter(review => 
           review.reviewerId !== serviceProvider.userId && 
           review.revieweeId === serviceProvider.userId
@@ -1392,7 +1379,7 @@ export default function ProviderDashboard() {
                                                   
                                                   if (effectiveStatus === 'pending') {
                                                     if (negotiation.proposer.id === user?.id) {
-                                                      // User's own pending proposal
+                                                      // Proposta pendente feita pelo próprio usuário
                                                       return (
                                                         <div className="ml-4">
                                                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -1402,11 +1389,11 @@ export default function ProviderDashboard() {
                                                         </div>
                                                       );
                                                     } else {
-                                                      // Client's pending proposal (can have actions)
-                                                      return null; // Will show action buttons
+                                                      // Proposta pendente do cliente (permite ações)
+                                                      return null; // Botões de ação exibidos
                                                     }
                                                   } else if (effectiveStatus === 'rejected') {
-                                                    // Show rejected badge for proposals that were superseded
+                                                    // Exibe badge de recusado para propostas substituídas
                                                     return (
                                                       <Badge className="bg-red-100 text-red-800">
                                                         Recusado

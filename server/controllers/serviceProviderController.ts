@@ -9,7 +9,7 @@ import { createLogger } from "../utils/logger.js";
 const logger = createLogger("serviceProvider");
 
 export function registerServiceProviderRoutes(app: Express) {
-  // Get all providers (with optional category filter)
+  // Lista prestadores (com filtro opcional de categoria)
   app.get("/api/providers", async (req: Request, res: Response) => {
     try {
       const { categoryId } = req.query;
@@ -27,7 +27,7 @@ export function registerServiceProviderRoutes(app: Express) {
     }
   });
 
-  // Get provider by ID
+  // Busca prestador por ID
   app.get("/api/providers/:id", async (req: Request, res: Response) => {
     try {
       const provider = await storage.getServiceProviderWithDetails(req.params.id);
@@ -52,7 +52,7 @@ export function registerServiceProviderRoutes(app: Express) {
         userId: req.user.userId,
       });
       
-      // Check if user already has a service in this category
+      // Verifica se já existe serviço nesta categoria para o usuário
       const existingProvider = await storage.getServiceProviderByUserAndCategory(req.user.userId, providerData.categoryId);
       if (existingProvider) {
         return res.status(400).json({ 
@@ -73,7 +73,7 @@ export function registerServiceProviderRoutes(app: Express) {
     }
   });
 
-  // Update provider
+  // Atualiza prestador
   app.put("/api/providers/:id", authenticateToken, async (req: Request, res: Response) => {
     try {
       const provider = await storage.getServiceProvider(req.params.id);
@@ -103,7 +103,7 @@ export function registerServiceProviderRoutes(app: Express) {
     }
   });
 
-  // Delete provider
+  // Remove prestador
   app.delete("/api/providers/:id", authenticateToken, async (req: Request, res: Response) => {
     try {
       const provider = await storage.getServiceProvider(req.params.id);
@@ -115,7 +115,7 @@ export function registerServiceProviderRoutes(app: Express) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
-      // Check for active requests before deletion
+      // Verifica solicitações ativas antes de excluir
       const activeRequests = await storage.getServiceRequestsByProvider(req.params.id);
       const hasActiveRequests = activeRequests.some(request => 
         request.status === 'pending' || request.status === 'accepted' || request.status === 'negotiating'
@@ -141,7 +141,7 @@ export function registerServiceProviderRoutes(app: Express) {
     }
   });
 
-  // Get current user's provider profiles with details
+  // Lista serviços do usuário atual com detalhes
   app.get("/api/users/me/providers", authenticateToken, async (req: Request, res: Response) => {
     try {
       const providers = await storage.getServiceProvidersByUserIdWithDetails(req.user!.userId);

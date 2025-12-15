@@ -14,11 +14,11 @@ import { createLogger } from "../utils/logger.js";
 
 const logger = createLogger("auth");
 
-const RESEND_VERIFICATION_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+const RESEND_VERIFICATION_INTERVAL_MS = 2 * 60 * 1000; // 2 minutos
 const resendVerificationTracker = new Map<string, number>();
 
 export function registerAuthRoutes(app: Express) {
-  // Register
+  // Registro
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
       const userData = insertUserSchema.parse(req.body);
@@ -39,7 +39,7 @@ export function registerAuthRoutes(app: Express) {
       const hashedPassword = await bcrypt.hash(userData.password, 10);
       
       const emailVerificationToken = generateVerificationToken();
-      const emailVerificationExpires = new Date(Date.now() + 3600000); // 1 hour from now
+      const emailVerificationExpires = new Date(Date.now() + 3600000); // expira em 1 hora
 
       const user = await storage.createUser({
         ...userData,
@@ -101,7 +101,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  // Resend verification email
+  // Reenvia e-mail de verificação
   app.post("/api/auth/resend-verification", async (req: Request, res: Response) => {
     const resendSchema = z.object({
       email: z.string().email("Email inválido").transform((value) => value.trim().toLowerCase()),
@@ -132,7 +132,7 @@ export function registerAuthRoutes(app: Express) {
       }
 
       const emailVerificationToken = generateVerificationToken();
-      const emailVerificationExpires = new Date(Date.now() + 3600000); // 1 hour from now
+      const emailVerificationExpires = new Date(Date.now() + 3600000); // expira em 1 hora
 
       await storage.updateUser(user.id, {
         emailVerificationToken,
@@ -167,7 +167,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  // Verify email
+  // Verifica e-mail
   app.get("/api/auth/verify-email", async (req: Request, res: Response) => {
     try {
       const { token } = req.query;
@@ -192,7 +192,7 @@ export function registerAuthRoutes(app: Express) {
         emailVerificationExpires: null,
       });
 
-      // Retornar sucesso
+      // Retorna sucesso
       return res.status(200).json({ 
         message: "E-mail verificado com sucesso",
         verified: true 
@@ -208,7 +208,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  // Get current user
+  // Obtém usuário atual
   app.get("/api/auth/me", authenticateToken, async (req: Request, res: Response) => {
     try {
       const user = await storage.getUser(req.user!.userId);
@@ -222,7 +222,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  // Enable provider capability
+  // Habilita perfil de prestador
   app.post("/api/auth/enable-provider", authenticateToken, async (req: Request, res: Response) => {
     try {
       const user = await storage.enableProviderCapability(req.user!.userId);
@@ -252,7 +252,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  // Update user profile
+  // Atualiza perfil do usuário
   app.put("/api/auth/profile", authenticateToken, async (req: Request, res: Response) => {
     try {
       const profileData = updateUserProfileSchema.parse(req.body);
@@ -273,27 +273,27 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  // Change password
+  // Altera senha
   app.put("/api/auth/change-password", authenticateToken, async (req: Request, res: Response) => {
     try {
       const { oldPassword, newPassword } = changePasswordSchema.parse(req.body);
       
-      // Get user from database
+      // Busca usuário no banco
       const user = await storage.getUser(req.user!.userId);
       if (!user) {
         return res.status(404).json({ message: "Usuário não encontrado" });
       }
 
-      // Verify old password
+      // Verifica senha antiga
       const passwordMatch = await bcrypt.compare(oldPassword, user.password);
       if (!passwordMatch) {
         return res.status(401).json({ message: "Senha antiga incorreta" });
       }
 
-      // Hash new password
+      // Gera hash da nova senha
       const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-      // Update password
+      // Atualiza senha
       await storage.updateUser(req.user!.userId, { password: hashedPassword });
 
       res.json({ message: "Senha alterada com sucesso" });
@@ -311,24 +311,24 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  // Delete user account
+  // Exclui conta do usuário
   app.delete("/api/auth/account", authenticateToken, async (req: Request, res: Response) => {
     try {
       const { password } = deleteAccountSchema.parse(req.body);
       
-      // Get user from database
+      // Busca usuário no banco
       const user = await storage.getUser(req.user!.userId);
       if (!user) {
         return res.status(404).json({ message: "Usuário não encontrado" });
       }
 
-      // Verify password
+      // Verifica senha
       const passwordMatch = await bcrypt.compare(password, user.password);
       if (!passwordMatch) {
         return res.status(401).json({ message: "Senha incorreta" });
       }
 
-      // Check for active requests as client
+      // Verifica solicitações ativas como cliente
       const clientRequests = await storage.getServiceRequestsByClient(req.user!.userId);
       const hasActiveClientRequests = clientRequests.some(request => 
         request.status === 'pending' || 
@@ -343,7 +343,7 @@ export function registerAuthRoutes(app: Express) {
         });
       }
 
-      // Check for active requests as provider
+      // Verifica solicitações ativas como prestador
       const userProviders = await storage.getServiceProvidersByUserIdWithDetails(req.user!.userId);
       for (const provider of userProviders) {
         const providerRequests = await storage.getServiceRequestsByProvider(provider.id);
@@ -361,32 +361,32 @@ export function registerAuthRoutes(app: Express) {
         }
       }
 
-      // Delete all related data using session_replication_role = replica to bypass foreign key constraints
+      // Remove dados relacionados usando session_replication_role = replica para contornar FKs
       await db.execute(sql`SET session_replication_role = replica`);
 
-      // Delete in order: messages, reviews, negotiations, service_requests, service_providers, withdrawals, users
+      // Remove na ordem: messages, reviews, negotiations, service_requests, service_providers, withdrawals, users
       await db.delete(messages).where(or(eq(messages.senderId, req.user!.userId), eq(messages.receiverId, req.user!.userId)));
       await db.delete(reviews).where(or(eq(reviews.reviewerId, req.user!.userId), eq(reviews.revieweeId, req.user!.userId)));
       await db.delete(negotiations).where(eq(negotiations.proposerId, req.user!.userId));
       
-      // Delete service requests where user is client
+      // Remove solicitações em que o usuário é cliente
       await db.delete(serviceRequests).where(eq(serviceRequests.clientId, req.user!.userId));
       
-      // Delete service requests where user is provider (through service_providers)
+      // Remove solicitações em que o usuário é prestador (via service_providers)
       for (const provider of userProviders) {
         await db.delete(serviceRequests).where(eq(serviceRequests.providerId, provider.id));
       }
       
-      // Delete service providers
+      // Remove prestadores
       await db.delete(serviceProviders).where(eq(serviceProviders.userId, req.user!.userId));
       
-      // Delete withdrawals
+      // Remove saques
       await db.delete(withdrawals).where(eq(withdrawals.userId, req.user!.userId));
       
-      // Delete user
+      // Remove usuário
       await db.delete(users).where(eq(users.id, req.user!.userId));
 
-      // Re-enable foreign key constraints
+      // Reativa restrições de chave estrangeira
       await db.execute(sql`SET session_replication_role = DEFAULT`);
 
       res.json({ message: "Conta excluída com sucesso" });
@@ -397,7 +397,7 @@ export function registerAuthRoutes(app: Express) {
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });
-      // Re-enable foreign key constraints in case of error
+      // Reativa restrições de chave estrangeira em caso de erro
       try {
         await db.execute(sql`SET session_replication_role = DEFAULT`);
       } catch (e) {

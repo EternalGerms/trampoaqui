@@ -77,7 +77,7 @@ app.use((req, res, next) => {
   logger.info("Routes registered successfully");
 
   // Set up frontend serving based on environment
-  // This must be done AFTER routes are registered but BEFORE error handler
+  // Deve ser chamado após registrar rotas e antes do error handler
   if (process.env.NODE_ENV === 'production') {
     logger.debug("Setting up static file serving...");
     serveStatic(app);

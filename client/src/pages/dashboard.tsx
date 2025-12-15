@@ -149,7 +149,7 @@ export default function Dashboard() {
     },
   });
 
-  // Get user's service requests
+  // Busca solicitações do usuário
   const { data: requests = [], isLoading: requestsLoading } = useQuery<ServiceRequest[]>({
     queryKey: ["/api/requests"],
     enabled: !!currentUser,
@@ -157,7 +157,7 @@ export default function Dashboard() {
 
 
 
-  // Enable provider capability mutation
+  // Mutation para habilitar prestador
   const enableProviderMutation = useMutationWithToast({
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/auth/enable-provider', {});
@@ -169,12 +169,12 @@ export default function Dashboard() {
     errorDescription: "Não foi possível habilitar os recursos de prestador.",
     invalidateQueries: ["/api/auth/me"],
     onSuccess: (data) => {
-      // Update local auth state
+      // Atualiza estado de autenticação local
       authManager.setAuth(data.token, data.user);
     },
   });
 
-  // Accept/Reject negotiation mutation
+  // Mutation para aceitar/recusar negociação
   const updateNegotiationStatusMutation = useMutationWithToast({
     mutationFn: async ({ negotiationId, status }: { negotiationId: string; status: 'accepted' | 'rejected' }) => {
       const response = await apiRequest('PUT', `/api/negotiations/${negotiationId}/status`, { status });
@@ -187,10 +187,10 @@ export default function Dashboard() {
     invalidateQueries: ["/api/requests"],
   });
 
-  // Create counter proposal mutation
+  // Mutation para criar contraproposta
   const createCounterProposalMutation = useMutationWithToast({
     mutationFn: async (data: z.infer<typeof counterProposalSchema>) => {
-      // Convert date and time fields to proper Date object
+      // Converte campos de data/hora para objeto Date
       const proposalData = {
         ...data,
         proposedDate: data.proposedDate && data.proposedTime ? 
@@ -217,7 +217,7 @@ export default function Dashboard() {
     },
   });
 
-  // Payment mutations
+  // Mutations de pagamento
   const processPaymentMutation = useMutationWithToast({
     mutationFn: async ({ requestId, paymentMethod }: { requestId: string; paymentMethod: string }) => {
       const response = await apiRequest('POST', `/api/requests/${requestId}/payment`, { paymentMethod });
@@ -242,7 +242,7 @@ export default function Dashboard() {
     invalidateQueries: ["/api/requests"],
   });
 
-  // Complete daily session mutation
+  // Mutation para concluir diária
   const completeDailySessionMutation = useMutationWithToast({
     mutationFn: async ({ requestId, dayIndex }: { requestId: string; dayIndex: number }) => {
       const response = await apiRequest('PUT', `/api/requests/${requestId}/daily-session/${dayIndex}`, {
@@ -304,10 +304,10 @@ export default function Dashboard() {
         requestId: selectedRequestForPayment.id,
         paymentMethod
       });
-      // Automatically complete payment after method selection
+      // Completa pagamento automaticamente após escolher método
       setTimeout(() => {
         handleCompletePayment(selectedRequestForPayment.id);
-      }, 1000); // Small delay to ensure the first mutation completes
+      }, 1000); // Pequeno delay para garantir a primeira mutation
     }
   };
 
@@ -315,7 +315,7 @@ export default function Dashboard() {
     completePaymentMutation.mutate(requestId);
   };
 
-  // Function to get payment amount from request or accepted negotiation
+  // Calcula valor a pagar da solicitação ou negociação aceita
   const getPaymentAmount = (request: ServiceRequest): number | null => {
     // First, try to get the proposedPrice from the request
     if (request.proposedPrice) {
@@ -361,7 +361,7 @@ export default function Dashboard() {
     return null;
   };
 
-  // Function to get display status text considering the actual request status
+  // Obtém o texto exibido de status considerando o status efetivo
   const getDisplayStatusText = (request: ServiceRequest) => {
     const effectiveStatus = getEffectiveRequestStatus(request);
     
@@ -374,7 +374,7 @@ export default function Dashboard() {
     return getStatusText(effectiveStatus);
   };
 
-  // Function to check if service date has passed
+  // Verifica se a data do serviço já passou
   const checkServiceDate = (request: ServiceRequest) => {
     if (!request.scheduledDate) return false;
     const serviceDate = new Date(request.scheduledDate);
@@ -382,12 +382,12 @@ export default function Dashboard() {
     return now < serviceDate;
   };
 
-  // Function to handle request status updates
+  // Atualiza o status da solicitação
   const handleUpdateRequestStatus = (requestId: string, status: string) => {
     updateRequestStatusMutation.mutate({ requestId, status });
   };
 
-  // Function to open review dialog
+  // Abre o diálogo de avaliação
   const handleOpenReviewDialog = (request: ServiceRequest) => {
     setSelectedRequestForReview(request);
     setReviewDialogOpen(true);
@@ -406,20 +406,19 @@ export default function Dashboard() {
     return null;
   }
 
-  // Function to get the effective status of a negotiation for the client
-  // This handles the logic for showing "Recusado" vs "Aguardando resposta"
+  // Calcula o status efetivo da negociação para o cliente (Recusado/Aguardando)
   const getEffectiveNegotiationStatus = (request: ServiceRequest, negotiation: any) => {
-    // If negotiation is already accepted/rejected, return that status
+    // Se já aceita/recusada, retorna esse status
     if (negotiation.status !== 'pending') {
       return negotiation.status;
     }
 
-    // Safety check for negotiations array
+    // Guarda-chuva para array vazio
     if (!request.negotiations || request.negotiations.length === 0) {
       return 'pending';
     }
 
-    // Find the most recent negotiation (regardless of status)
+    // Negociação mais recente
     const allNegotiations = request.negotiations
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     
@@ -427,53 +426,50 @@ export default function Dashboard() {
     
     const mostRecentNegotiation = allNegotiations[0];
     
-    // If this is the most recent negotiation
+    // Se for a negociação mais recente
     if (negotiation.id === mostRecentNegotiation.id) {
       return 'pending'; // Can have actions or show "Aguardando resposta"
     }
     
-    // If this is an older negotiation, it should be marked as "Recusado"
-    // because a newer proposal has been made or the most recent was acted upon
+    // Negociações antigas ficam como "Recusado"
     return 'rejected';
   };
 
-  // Function to get the effective request status
-  // This determines if a request should show "Negociando" or "Cancelado"
+  // Calcula o status efetivo da solicitação (Negociando/Cancelado)
   const getEffectiveRequestStatus = (request: ServiceRequest) => {
-    // If request is already completed, accepted, payment_pending, or cancelled, return that status
+    // Se estiver completed/accepted/payment_pending/cancelled, retorna direto
     if (['completed', 'accepted', 'payment_pending', 'cancelled'].includes(request.status)) {
       return request.status;
     }
 
-    // If request is pending_completion, show as accepted for the client
-    // since the service was already accepted and is just waiting for completion confirmation
+    // Se estiver pending_completion, mostra como accepted para o cliente
     if (request.status === 'pending_completion') {
       return 'accepted';
     }
 
-    // If request is pending and has no negotiations, return pending
+    // Se estiver pending sem negociações, mantém pending
     if (request.status === 'pending' && (!request.negotiations || request.negotiations.length === 0)) {
       return 'pending';
     }
 
-    // If request is negotiating, check if all negotiations are rejected
+    // Em negotiating, avalia status da negociação mais recente
     if (request.status === 'negotiating' && request.negotiations && request.negotiations.length > 0) {
       const allNegotiations = request.negotiations
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
       const mostRecentNegotiation = allNegotiations[0];
       
-      // If the most recent negotiation was rejected, the request should be cancelled
+      // Se a mais recente foi rejeitada, cancela
       if (mostRecentNegotiation.status === 'rejected') {
         return 'cancelled';
       }
       
-      // If the most recent negotiation was accepted, the request should be accepted
+      // Se a mais recente foi aceita, aceita
       if (mostRecentNegotiation.status === 'accepted') {
         return 'accepted';
       }
       
-      // If the most recent negotiation is still pending, keep negotiating
+      // Se a mais recente está pendente, mantém negotiating
       if (mostRecentNegotiation.status === 'pending') {
         return 'negotiating';
       }
@@ -485,7 +481,7 @@ export default function Dashboard() {
   const handleCounterProposal = (data: z.infer<typeof counterProposalSchema>) => {
     if (!counterProposalNegotiationId || !originalNegotiationData) return;
     
-    // Check if any field has changed from the original negotiation
+    // Verifica se algum campo mudou em relação à negociação original
     const hasChanges = 
       data.pricingType !== originalNegotiationData.pricingType ||
       data.proposedPrice !== (originalNegotiationData.proposedPrice || "") ||
@@ -963,7 +959,7 @@ export default function Dashboard() {
       {/* Payment Dialog */}
       {selectedRequestForPayment && (() => {
         const paymentAmount = getPaymentAmount(selectedRequestForPayment);
-        // Only render if we have a valid payment amount
+        // Só renderiza se houver valor de pagamento válido
         if (paymentAmount !== null && paymentAmount > 0) {
           return (
             <PaymentDialog

@@ -6,7 +6,7 @@ import { createLogger } from "../utils/logger.js";
 const logger = createLogger("balance");
 
 export function registerBalanceRoutes(app: Express) {
-  // Get current user's balance
+  // Obtém saldo do usuário logado
   app.get("/api/users/me/balance", authenticateToken, async (req: Request, res: Response) => {
     try {
       const balance = await storage.getUserBalance(req.user!.userId);

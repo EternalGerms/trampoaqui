@@ -167,8 +167,8 @@ export async function setupVite(app: Express, server: Server) {
 
   app.use(vite.middlewares);
   
-  // Lidar apenas com rotas não-API com o catch-all
-  // Use app.all to catch all HTTP methods
+  // Lida apenas com rotas não-API via catch-all
+  // Usa app.all para capturar todos os métodos HTTP
   app.all("*", async (req, res, next) => {
     const originalUrl = req.originalUrl;
     
@@ -177,7 +177,7 @@ export async function setupVite(app: Express, server: Server) {
       return next();
     }
 
-    // Only handle GET requests for serving HTML
+    // Apenas GET serve HTML
     if (req.method !== "GET") {
       return next();
     }
@@ -185,7 +185,7 @@ export async function setupVite(app: Express, server: Server) {
     // Rate limiting para operações de arquivo
     const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
     if (!checkRateLimit(clientIp)) {
-      return res.status(429).json({ message: "Too many requests" });
+      return res.status(429).json({ message: "Muitas requisições" });
     }
 
     try {
@@ -196,7 +196,7 @@ export async function setupVite(app: Express, server: Server) {
         "index.html",
       );
 
-      // Check if template file exists
+
       if (!fs.existsSync(clientTemplate)) {
         logger.error("Template file not found", { templatePath: clientTemplate });
         return res.status(500).send("Template file not found");
@@ -242,7 +242,7 @@ export function serveStatic(app: Express) {
   staticLogger.debug("Checking dist path", { distPath, __dirname, exists: fs.existsSync(distPath) });
 
   if (!fs.existsSync(distPath)) {
-    // List parent directory to help debug
+
     const parentDir = path.resolve(__dirname, "..");
     staticLogger.debug("Parent directory info", { parentDir, exists: fs.existsSync(parentDir) });
     if (fs.existsSync(parentDir)) {
@@ -258,36 +258,36 @@ export function serveStatic(app: Express) {
     );
   }
 
-  // Verify index.html exists
+  // Verifica se index.html existe
   const indexPath = path.resolve(distPath, "index.html");
   staticLogger.debug("Index.html check", { indexPath, exists: fs.existsSync(indexPath) });
 
   staticLogger.info("Serving static files", { distPath });
 
-  // Custom static file middleware that doesn't send 404s
+  // Middleware estático custom que não retorna 404
   app.use((req, res, next) => {
     const url = req.originalUrl;
     const safeUrlForLog = sanitizeUrlForLog(url);
     
-    // Skip API routes
+    // Ignora rotas de API
     if (url.startsWith("/api")) {
       return next();
     }
     
     try {
-      // Try to serve static file
-      // Remove leading slash and normalize the path
+      // Tenta servir arquivo estático
+      // Remove barra inicial e normaliza o path
       const fileToServe = url === "/" || url === "" ? "index.html" : url.replace(/^\//, "");
       const resolvedPath = path.resolve(distPath, fileToServe);
       const distPathResolved = path.resolve(distPath);
       
-      // Security check: ensure the resolved path is within distPath
+      // Checagem de segurança: garante que o path resolvido está dentro de distPath
       if (!resolvedPath.startsWith(distPathResolved)) {
         staticLogger.warn("Security check failed", { resolvedPath, distPathResolved, url: safeUrlForLog });
         return next();
       }
       
-      // Check if file exists
+      // Verifica se o arquivo existe
       if (fs.existsSync(resolvedPath)) {
         const stats = fs.statSync(resolvedPath);
         if (stats.isFile()) {
@@ -301,7 +301,7 @@ export function serveStatic(app: Express) {
         }
       }
       
-      // File doesn't exist, continue to catch-all
+      // Arquivo não existe, segue para catch-all
       staticLogger.debug("File not found, continuing to catch-all", { url: safeUrlForLog });
       next();
     } catch (error) {
@@ -310,23 +310,23 @@ export function serveStatic(app: Express) {
     }
   });
 
-  // Catch-all route to serve index.html for all non-API routes
+  // Rota catch-all para servir index.html em rotas não-API
   app.use((req, res, next) => {
     const url = req.originalUrl;
     
-    // Skip API routes
+    // Ignora rotas de API
     if (url.startsWith("/api")) {
       return next();
     }
     
-    // Only handle GET requests for serving HTML
+    // Só processa GET para servir HTML
     const safeUrlForLog = sanitizeUrlForLog(url);
     if (req.method !== "GET") {
       staticLogger.debug("Catch-all skipping non-GET request", { method: req.method, url: safeUrlForLog });
       return next();
     }
     
-    // Skip if response already sent (static file was found)
+    // Pula se a resposta já foi enviada (arquivo estático encontrado)
     if (res.headersSent) {
       staticLogger.debug("Catch-all skipping, response already sent", { url: safeUrlForLog });
       return next();
