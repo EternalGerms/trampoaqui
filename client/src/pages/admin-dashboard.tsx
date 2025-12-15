@@ -170,7 +170,6 @@ export default function AdminDashboard() {
         throw new Error('Failed to update admin status');
       }
 
-      // Refresh users list
       fetchUsers();
     } catch (error) {
       console.error('Error updating admin status:', error);
@@ -196,7 +195,6 @@ export default function AdminDashboard() {
         throw new Error('Failed to delete user');
       }
 
-      // Refresh users list
       fetchUsers();
     } catch (error) {
       console.error('Error deleting user:', error);
@@ -277,7 +275,7 @@ export default function AdminDashboard() {
           <TabsContent value="dashboard" className="space-y-6">
             {dashboardData && (
               <>
-                {/* Statistics Cards */}
+                {/* Cartões de estatísticas */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -320,7 +318,7 @@ export default function AdminDashboard() {
                   </Card>
                 </div>
 
-                {/* Recent Activity */}
+                {/* Atividade recente */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <Card>
                     <CardHeader>

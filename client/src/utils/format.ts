@@ -1,7 +1,7 @@
 /**
- * Format a number or string as Brazilian currency (R$)
- * @param value - Number or string to format
- * @returns Formatted currency string (e.g., "R$ 150,00")
+ * Formata número ou string como moeda brasileira (R$).
+ * @param value Valor numérico ou string a formatar.
+ * @returns Moeda formatada, ex.: "R$ 150,00".
  */
 export function formatCurrency(value: number | string | null | undefined): string {
   if (value === null || value === undefined) {
@@ -18,9 +18,9 @@ export function formatCurrency(value: number | string | null | undefined): strin
 }
 
 /**
- * Format a date with date and time in Brazilian format
- * @param date - Date string or Date object
- * @returns Formatted date and time string (e.g., "01/01/2024 14:30")
+ * Formata data e hora no padrão brasileiro.
+ * @param date String de data ou objeto Date.
+ * @returns Data e hora formatadas, ex.: "01/01/2024 14:30".
  */
 export function formatDateTime(date: string | Date | null | undefined): string {
   if (!date) {
@@ -43,9 +43,9 @@ export function formatDateTime(date: string | Date | null | undefined): string {
 }
 
 /**
- * Format a date without time in Brazilian format
- * @param date - Date string or Date object
- * @returns Formatted date string (e.g., "01/01/2024")
+ * Formata apenas a data no padrão brasileiro.
+ * @param date String de data ou objeto Date.
+ * @returns Data formatada, ex.: "01/01/2024".
  */
 export function formatDate(date: string | Date | null | undefined): string {
   if (!date) {
@@ -66,9 +66,9 @@ export function formatDate(date: string | Date | null | undefined): string {
 }
 
 /**
- * Format time only in Brazilian format
- * @param date - Date string or Date object
- * @returns Formatted time string (e.g., "14:30")
+ * Formata apenas a hora no padrão brasileiro.
+ * @param date String de data ou objeto Date.
+ * @returns Hora formatada, ex.: "14:30".
  */
 export function formatTime(date: string | Date | null | undefined): string {
   if (!date) {

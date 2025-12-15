@@ -24,7 +24,7 @@ export default function Services() {
   const [location, setLocationState] = useState("");
   const [sortBy, setSortBy] = useState("rating");
 
-  // Get initial filters from URL params
+  // Carrega filtros iniciais da URL
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const categoryParam = urlParams.get('category');
@@ -47,7 +47,7 @@ export default function Services() {
   const filteredProviders = useMemo(() => {
     let filtered = allProviders;
 
-    // Filter by search query
+    // Filtra por termo de busca
     if (searchQuery) {
       filtered = filtered.filter(provider => 
         provider.user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -56,14 +56,14 @@ export default function Services() {
       );
     }
 
-    // Filter by location
+    // Filtra por localização
     if (location) {
       filtered = filtered.filter(provider => 
         provider.location.toLowerCase().includes(location.toLowerCase())
       );
     }
 
-    // Sort providers
+    // Ordena prestadores
     switch (sortBy) {
       case "rating":
         filtered.sort((a, b) => b.averageRating - a.averageRating);
@@ -101,7 +101,7 @@ export default function Services() {
   }, [allProviders, searchQuery, location, sortBy]);
 
   const handleContactProvider = (providerId: string) => {
-    // Find the provider to get the user ID
+    // Busca o prestador para obter o ID do usuário
     const provider = allProviders.find(p => p.id === providerId);
     if (provider) {
       setLocation(`/profile/${provider.userId}`);
@@ -118,7 +118,7 @@ export default function Services() {
       
       <div className="flex-1 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Search and Filters */}
+          {/* Busca e filtros */}
           <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
             <h1 className="text-2xl font-bold text-gray-900 mb-6">Encontre Profissionais</h1>
             
@@ -191,7 +191,7 @@ export default function Services() {
             </div>
           </div>
 
-          {/* Results */}
+          {/* Resultados */}
           {isLoading ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[...Array(6)].map((_, i) => (

@@ -104,7 +104,7 @@ class AuthManager {
 
 export const authManager = new AuthManager();
 
-// Helper function to make authenticated API requests
+// Função auxiliar para enviar requisições autenticadas
 export async function authenticatedRequest(method: string, url: string, data?: unknown): Promise<Response> {
   const token = authManager.getToken();
   

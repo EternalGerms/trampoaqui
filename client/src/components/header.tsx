@@ -14,7 +14,7 @@ export default function Header() {
   const [withdrawalAmount, setWithdrawalAmount] = useState('');
   const [isWithdrawalDialogOpen, setIsWithdrawalDialogOpen] = useState(false);
 
-  // Fetch user balance
+  // Busca saldo do usuário
   const { data: balanceData } = useQuery({
     queryKey: ["/api/users/me/balance"],
     queryFn: async () => {
@@ -50,7 +50,7 @@ export default function Header() {
       if (response.ok) {
         setWithdrawalAmount('');
         setIsWithdrawalDialogOpen(false);
-        // Refresh balance
+        // Atualiza saldo exibido
         window.location.reload();
       }
     } catch (error) {
@@ -62,14 +62,14 @@ export default function Header() {
     <header className="bg-white shadow-sm border-b border-gray-200">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
+          {/* Logotipo */}
           <Link href="/">
             <h1 className="text-2xl font-bold text-primary-600 cursor-pointer">
               TrampoAqui
             </h1>
           </Link>
 
-          {/* Navigation */}
+          {/* Navegação */}
           <nav className="hidden md:flex items-center space-x-8">
             <Link href="/services">
               <span className={`text-gray-600 hover:text-primary-600 cursor-pointer ${
@@ -110,11 +110,11 @@ export default function Header() {
             )}
           </nav>
 
-          {/* User Actions */}
+          {/* Ações do usuário */}
           <div className="flex items-center space-x-4">
             {currentUser ? (
               <div className="flex items-center space-x-3">
-                {/* Balance for providers */}
+                {/* Saldo para prestadores */}
                 {currentUser.isProviderEnabled && (
                   <Dialog open={isWithdrawalDialogOpen} onOpenChange={setIsWithdrawalDialogOpen}>
                     <DialogTrigger asChild>

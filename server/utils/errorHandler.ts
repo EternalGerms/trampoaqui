@@ -5,10 +5,10 @@ import { createLogger } from "./logger.js";
 const logger = createLogger("errorHandler");
 
 /**
- * Handle route errors consistently
- * - ZodError → 400 with validation details
- * - Database errors (object with 'code' property) → 400
- * - Other errors → 500
+ * Trata erros das rotas de forma consistente:
+ * - ZodError → 400 com detalhes de validação
+ * - Erros de banco (objeto com propriedade code) → 400
+ * - Demais erros → 500
  */
 export function handleRouteError(error: unknown, res: Response) {
   if (error instanceof ZodError) {

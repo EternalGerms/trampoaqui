@@ -5,13 +5,13 @@ import { createLogger } from "../utils/logger.js";
 const logger = createLogger("category");
 
 /**
- * Seed initial service categories
+ * Popula categorias iniciais de serviço.
  */
 export async function seedCategories() {
-  // Primeiro, verificar se as categorias já existem
+  // Verifica se as categorias já existem
   const existingCategories = await storage.getAllServiceCategories();
   
-  // Se já existem categorias, não precisamos semear novamente
+  // Se já existirem categorias, não semea novamente
   if (existingCategories.length > 0) {
     logger.info("Categories already seeded, skipping", { count: existingCategories.length });
     return;
@@ -45,7 +45,7 @@ export async function seedCategories() {
 }
 
 export function registerCategoryRoutes(app: Express) {
-  // Get all categories
+  // Lista todas as categorias
   app.get("/api/categories", async (req: Request, res: Response) => {
     try {
       const categories = await storage.getAllServiceCategories();

@@ -1,7 +1,7 @@
 import type { User } from "@shared/schema";
 
 /**
- * Format user response with basic fields (for authentication responses)
+ * Formata resposta de usuário com campos básicos (usado em autenticação).
  */
 export function formatUserResponse(user: User) {
   return {
@@ -15,7 +15,7 @@ export function formatUserResponse(user: User) {
 }
 
 /**
- * Format user response with full profile data (for profile endpoints)
+ * Formata resposta de usuário com dados completos de perfil.
  */
 export function formatUserResponseFull(user: User) {
   return {
@@ -40,7 +40,7 @@ export function formatUserResponseFull(user: User) {
 }
 
 /**
- * Format user response for provider profile (includes provider-specific fields)
+ * Formata resposta de usuário para perfil de prestador.
  */
 export function formatUserResponseProvider(user: User) {
   return {
@@ -57,7 +57,7 @@ export function formatUserResponseProvider(user: User) {
 }
 
 /**
- * Format user response for public profile (includes all fields except sensitive data)
+ * Formata resposta de usuário para perfil público (sem dados sensíveis).
  */
 export function formatUserResponsePublic(user: User) {
   return {

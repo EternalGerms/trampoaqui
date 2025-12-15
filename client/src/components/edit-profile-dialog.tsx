@@ -111,7 +111,7 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
     },
   });
 
-  // Reset forms when user changes or dialog opens
+  // Recarrega os formulários quando o usuário muda ou o diálogo abre
   useEffect(() => {
     if (user && isOpen) {
       // Se location não estiver definido mas city e state estiverem, criar location
@@ -218,14 +218,14 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
     errorMessage: "Erro ao atualizar perfil",
     errorDescription: "Tente novamente mais tarde.",
     invalidateQueries: ["/api/users", "/api/auth/me", "/api/providers"],
-    skipDefaultErrorToast: true, // We handle errors customly
+    skipDefaultErrorToast: true, // Erros tratados manualmente abaixo
     onSuccess: (updatedUser) => {
       authManager.setAuth(authManager.getToken()!, updatedUser);
       queryClient.invalidateQueries({ queryKey: ["/api/users", user.id] });
       onOpenChange(false);
     },
     onError: (error: Error) => {
-      // Custom error handling for parsing error messages
+      // Tratamento customizado para extrair mensagem de erro
       let errorMessage = "Tente novamente mais tarde.";
       try {
         const match = error.message.match(/^(\d+):\s*(.+)$/);
@@ -265,13 +265,13 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
     successDescription: "Sua senha foi alterada com sucesso.",
     errorMessage: "Erro ao alterar senha",
     errorDescription: "Tente novamente mais tarde.",
-    skipDefaultErrorToast: true, // We handle errors customly
+    skipDefaultErrorToast: true, // Erros tratados manualmente abaixo
     onSuccess: () => {
       passwordForm.reset();
       onOpenChange(false);
     },
     onError: (error: Error) => {
-      // Custom error handling for parsing error messages
+      // Tratamento customizado para extrair mensagem de erro
       let errorMessage = "Tente novamente mais tarde.";
       try {
         const match = error.message.match(/^(\d+):\s*(.+)$/);
@@ -309,14 +309,14 @@ export default function EditProfileDialog({ user, isOpen, onOpenChange }: EditPr
     successDescription: "Sua conta foi excluída com sucesso.",
     errorMessage: "Erro ao excluir conta",
     errorDescription: "Tente novamente mais tarde.",
-    skipDefaultErrorToast: true, // We handle errors customly
+    skipDefaultErrorToast: true, // Erros tratados manualmente abaixo
     onSuccess: () => {
       authManager.logout();
       setLocation('/');
       onOpenChange(false);
     },
     onError: (error: Error) => {
-      // Custom error handling for parsing error messages
+      // Tratamento customizado para extrair mensagem de erro
       let errorMessage = "Tente novamente mais tarde.";
       try {
         const match = error.message.match(/^(\d+):\s*(.+)$/);

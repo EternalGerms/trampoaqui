@@ -9,10 +9,10 @@ export interface UseMutationWithToastOptions<TData, TVariables, TContext = unkno
   errorMessage: string;
   errorDescription?: string;
   invalidateQueries?: string[];
-  skipDefaultErrorToast?: boolean; // Skip default error toast if custom onError handles it
+  skipDefaultErrorToast?: boolean; // Pula toast padrão de erro se onError custom já tratar
   onSuccess?: (data: TData, variables: TVariables, context?: TContext) => void | Promise<void>;
   onError?: (error: Error, variables: TVariables, context?: TContext) => void | Promise<void>;
-  // Allow passing through other useMutation options
+  // Permite encaminhar outras opções do useMutation
   mutationOptions?: Omit<UseMutationOptions<TData, Error, TVariables, TContext>, 'mutationFn' | 'onSuccess' | 'onError'>;
 }
 
@@ -37,39 +37,33 @@ export function useMutationWithToast<TData, TVariables, TContext = unknown>(
     mutationFn,
     ...mutationOptions,
     onSuccess: async (data, variables, context) => {
-      // Show success toast
       toast({
         title: successMessage,
         description: successDescription,
       });
 
-      // Invalidate queries if provided
       if (invalidateQueries) {
         invalidateQueries.forEach((key) => {
           queryClient.invalidateQueries({ queryKey: [key] });
         });
       }
 
-      // Call custom onSuccess if provided
       if (customOnSuccess) {
         await customOnSuccess(data, variables, context);
       }
     },
     onError: async (error, variables, context) => {
-      // If skipDefaultErrorToast is true and customOnError exists, only call customOnError
       if (skipDefaultErrorToast && customOnError) {
         await customOnError(error, variables, context);
         return;
       }
 
-      // Show default error toast
       toast({
         title: errorMessage,
         description: errorDescription || "Tente novamente em alguns instantes.",
         variant: "destructive",
       });
 
-      // Call custom onError if provided (after showing default toast)
       if (customOnError) {
         await customOnError(error, variables, context);
       }

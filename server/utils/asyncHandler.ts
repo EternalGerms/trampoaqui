@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { handleRouteError } from "./errorHandler";
 
 /**
- * Wrapper for async route handlers to automatically handle errors
+ * Envoltório para handlers assíncronos tratarem erros automaticamente.
  */
 export function asyncHandler(
   fn: (req: Request, res: Response) => Promise<void>
