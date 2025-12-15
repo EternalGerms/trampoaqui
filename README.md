@@ -8,6 +8,9 @@
 
 ## 🎯 Sobre o Projeto
 
+<img width="1614" height="870" alt="image" src="https://github.com/user-attachments/assets/ce2550d0-f508-45a4-ad6d-dff1d9bb4297" />
+
+
 ### Introdução
 
 O **TrampoAqui** é um sistema web desenvolvido para facilitar a contratação de serviços gerais em comunidades locais. O projeto visa tornar fácil contratar serviços gerais, incentivando o relacionamento entre prestadores de serviço e contratantes de forma eficiente e segura, tendo em base a dificuldade de acesso a profissionais qualificados, falta de clareza de preços e segurança no processo de contratação.
