@@ -1,6 +1,6 @@
 # Multi-stage build para otimização
 # Stage 1: Build dependencies and application
-FROM node:18-slim AS builder
+FROM node:25.6.0-trixie-slim AS builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ COPY package*.json ./
 
 # Install all dependencies (including dev dependencies for build)
 # Fix for rollup optional dependencies on Linux - install explicitly after npm ci
-RUN npm ci && \
+RUN npm install && \
     npm install @rollup/rollup-linux-x64-gnu --save-optional --force
 
 # Copy configuration files
@@ -29,7 +29,7 @@ COPY shared/ ./shared/
 RUN npm run build
 
 # Stage 2: Production image
-FROM node:18-slim AS production
+FROM node:25.6.1-trixie-slim AS production
 
 WORKDIR /app
 

@@ -9,7 +9,7 @@ import { createLogger } from "../utils/logger.js";
 const logger = createLogger("serviceRequest");
 
 export function registerServiceRequestRoutes(app: Express) {
-  // Get service requests for current user (as client)
+  // Lista solicitações do usuário logado (como cliente)
   app.get("/api/requests", authenticateToken, async (req: Request, res: Response) => {
     try {
       const requests = await storage.getServiceRequestsByClientWithNegotiations(req.user!.userId);
@@ -26,10 +26,10 @@ export function registerServiceRequestRoutes(app: Express) {
     }
   });
 
-  // Get service requests for current user (as provider)
+  // Lista solicitações do usuário logado (como prestador)
   app.get("/api/requests/provider", authenticateToken, async (req: Request, res: Response) => {
     try {
-      // First check if user has provider capability enabled
+      // Primeiro verifica se o usuário tem perfil de prestador habilitado
       const user = await storage.getUser(req.user!.userId);
       if (!user?.isProviderEnabled) {
         return res.status(403).json({ 
@@ -38,7 +38,7 @@ export function registerServiceRequestRoutes(app: Express) {
         });
       }
       
-      // Check if profile is complete and identify missing fields
+      // Verifica se o perfil está completo e aponta campos faltantes
       const missingFields = [];
       if (!user.bio) missingFields.push('bio');
       if (!user.experience) missingFields.push('experience');
@@ -57,7 +57,7 @@ export function registerServiceRequestRoutes(app: Express) {
         });
       }
       
-      // Get all service providers for the current user
+      // Obtém todos os serviços cadastrados pelo usuário
       const providers = await storage.getServiceProvidersByUserIdWithDetails(req.user!.userId);
       
       if (!providers || providers.length === 0) {
@@ -72,14 +72,14 @@ export function registerServiceRequestRoutes(app: Express) {
         });
       }
       
-      // Get requests for all providers of this user
+      // Obtém solicitações para todos os serviços deste usuário
       const allRequests = [];
       for (const provider of providers) {
         const providerRequests = await storage.getServiceRequestsByProviderWithNegotiations(provider.id);
         allRequests.push(...providerRequests);
       }
       
-      // Sort all requests by creation date (most recent first)
+      // Ordena solicitações por data de criação (mais recentes primeiro)
       const requests = allRequests.sort((a, b) => 
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
@@ -104,7 +104,7 @@ export function registerServiceRequestRoutes(app: Express) {
     }
   });
 
-  // Create service request
+  // Cria nova solicitação de serviço
   app.post("/api/requests", authenticateToken, async (req: Request, res: Response) => {
     try {
       const requestData = insertServiceRequestSchema.parse({
@@ -211,7 +211,7 @@ export function registerServiceRequestRoutes(app: Express) {
     }
   });
 
-  // Update daily session for a request
+  // Atualiza uma diária específica da solicitação
   app.put("/api/requests/:id/daily-session/:dayIndex", authenticateToken, async (req: Request, res: Response) => {
     try {
       const request = await storage.getServiceRequest(req.params.id);
@@ -239,13 +239,13 @@ export function registerServiceRequestRoutes(app: Express) {
         });
       }
 
-      // Get provider for this request
+      // Busca o prestador desta solicitação
       const provider = await storage.getServiceProvider(request.providerId);
       if (!provider) {
         return res.status(404).json({ message: "Provider not found" });
       }
 
-      // Check if user has permission (client or provider)
+      // Verifica se o usuário tem permissão (cliente ou prestador)
       const isClient = request.clientId === req.user!.userId;
       const isProvider = provider.userId === req.user!.userId;
       if (!isClient && !isProvider) {
@@ -333,9 +333,9 @@ export function registerServiceRequestRoutes(app: Express) {
         updateData.providerCompletedAt = now;
       }
 
-      // Add balance to provider when service is completed (check if conditions are met)
+      // Adiciona saldo ao prestador quando serviço é concluído (checando condições)
       const finalStatus = updateData.status || request.status;
-      const paymentWasCompleted = request.paymentCompletedAt != null; // Check for both null and undefined
+      const paymentWasCompleted = request.paymentCompletedAt != null; // Considera null e undefined
       const balanceNotAddedYet = !request.balanceAddedAt;
       const bothPartiesConfirmed = updateData.clientCompletedAt && updateData.providerCompletedAt;
       
@@ -346,7 +346,7 @@ export function registerServiceRequestRoutes(app: Express) {
           request.proposedPrice) {
         const serviceAmount = parseFloat(request.proposedPrice.toString());
         if (!isNaN(serviceAmount) && serviceAmount > 0) {
-          const platformFee = serviceAmount * 0.05; // 5% platform fee
+          const platformFee = serviceAmount * 0.05; // Taxa da plataforma (5%)
           const providerAmount = serviceAmount - platformFee;
           
           await storage.addToUserBalance(provider.userId, providerAmount);
@@ -369,7 +369,7 @@ export function registerServiceRequestRoutes(app: Express) {
     }
   });
 
-  // Update service request
+  // Atualiza uma solicitação
   app.put("/api/requests/:id", authenticateToken, async (req: Request, res: Response) => {
     try {
       const request = await storage.getServiceRequest(req.params.id);
@@ -377,13 +377,13 @@ export function registerServiceRequestRoutes(app: Express) {
         return res.status(404).json({ message: "Request not found" });
       }
 
-      // Get provider for this request
+      // Busca o prestador desta solicitação
       const provider = await storage.getServiceProvider(request.providerId);
       if (!provider) {
         return res.status(404).json({ message: "Provider not found" });
       }
 
-      // Check if user has permission to update this request (client or provider)
+      // Verifica se cliente ou prestador podem atualizar
       if (request.clientId !== req.user!.userId && provider.userId !== req.user!.userId) {
         return res.status(403).json({ message: "Unauthorized" });
       }
@@ -398,14 +398,14 @@ export function registerServiceRequestRoutes(app: Express) {
         }
       }
       
-      // Handle completion logic
+      // Lógica de conclusão
       const now = new Date();
       const isClient = request.clientId === req.user!.userId;
       const isProvider = provider.userId === req.user!.userId;
       const statusIsChangingToCompleted = updateData.status === 'completed' && request.status !== 'completed';
       const statusIsAlreadyCompleted = request.status === 'completed';
       
-      // If status is being set to completed, validate and set completion timestamps
+      // Se o status for alterado para completed, valida e define timestamps de conclusão
       if (statusIsChangingToCompleted) {
         // Para serviços diários, validar se todas as diárias foram concluídas
         if (request.pricingType === 'daily') {
@@ -435,25 +435,25 @@ export function registerServiceRequestRoutes(app: Express) {
         }
       }
       
-      // Check if request should be marked as completed
+      // Verifica se deve marcar como concluída
       const hasClientCompleted = updateData.clientCompletedAt || request.clientCompletedAt;
       const hasProviderCompleted = updateData.providerCompletedAt || request.providerCompletedAt;
       
-      // Determine final status
+      // Determina status final
       if (statusIsChangingToCompleted) {
         if (!hasClientCompleted || !hasProviderCompleted) {
-          // Change status to 'pending_completion' if only one party has confirmed
+          // Se só uma parte confirmou, marca como 'pending_completion'
           updateData.status = 'pending_completion';
         } else {
-          // Both parties have confirmed - mark as completed
+          // Ambas confirmaram - marca como completed
           updateData.status = 'completed';
         }
       }
       
-      // Add balance to provider when service is completed (check if conditions are met)
-      // Conditions: status is/will be 'completed', payment was completed, both parties confirmed, balance not added yet
+      // Adiciona saldo ao prestador quando concluído (se condições forem atendidas):
+      // status completed/será completed, pagamento concluído, ambas partes confirmaram e saldo ainda não adicionado
       const finalStatus = updateData.status || request.status;
-      const paymentWasCompleted = request.paymentCompletedAt != null; // Check for both null and undefined
+      const paymentWasCompleted = request.paymentCompletedAt != null; // Considera null e undefined
       const balanceNotAddedYet = !request.balanceAddedAt;
       const bothPartiesConfirmed = hasClientCompleted && hasProviderCompleted;
       
@@ -464,7 +464,7 @@ export function registerServiceRequestRoutes(app: Express) {
           request.proposedPrice) {
         const serviceAmount = parseFloat(request.proposedPrice.toString());
         if (!isNaN(serviceAmount) && serviceAmount > 0) {
-          const platformFee = serviceAmount * 0.05; // 5% platform fee
+          const platformFee = serviceAmount * 0.05; // Taxa da plataforma (5%)
           const providerAmount = serviceAmount - platformFee;
           
           await storage.addToUserBalance(provider.userId, providerAmount);

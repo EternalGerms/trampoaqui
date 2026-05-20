@@ -143,7 +143,7 @@ export default function Profile() {
   const isOwner = currentUser && user && currentUser.id === user.id;
   const isProvider = user?.isProviderEnabled && userProviders.length > 0;
 
-  // Function to calculate client ratings (reviews received as client)
+  // Calcula notas do usuário como cliente (reviews recebidas)
   const getClientRating = () => {
     if (clientReviewsReceived.length === 0) {
       return { averageRating: 0, reviewCount: 0 };
@@ -158,7 +158,7 @@ export default function Profile() {
     };
   };
 
-  // Function to calculate provider ratings (reviews received as provider)
+  // Calcula notas do usuário como prestador (reviews recebidas)
   const getProviderRating = () => {
     if (providerReviewsReceived.length === 0) {
       return { averageRating: 0, reviewCount: 0 };
@@ -173,17 +173,17 @@ export default function Profile() {
     };
   };
 
-  // Function to calculate ratings for a specific service
+  // Calcula notas de um serviço específico
   const getServiceSpecificRating = (serviceId: string) => {
     const service = userProviders.find(s => s.id === serviceId);
     if (!service) {
       return { averageRating: 0, reviewCount: 0 };
     }
 
-    // Get reviews specific to this service
+    // Reviews específicas deste serviço
     const serviceSpecificReviews = serviceReviews[service.id] || [];
     
-    // Filter out reviews from the provider themselves
+    // Filtra reviews feitas pelo próprio prestador
     const filteredServiceReviews = serviceSpecificReviews.filter(
       (review) => review.reviewerId !== user?.id
     );
@@ -247,7 +247,7 @@ export default function Profile() {
     );
   }
 
-  // Get ratings
+  // Obtém notas
   const clientRating = getClientRating();
   const providerRating = getProviderRating();
 

@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { authenticateToken } from "../middleware/auth";
 
 export function registerMessageRoutes(app: Express) {
-  // Create message
+  // Cria mensagem
   app.post("/api/messages", authenticateToken, async (req: Request, res: Response) => {
     try {
       const { content, receiverId, requestId } = req.body;
@@ -26,7 +26,7 @@ export function registerMessageRoutes(app: Express) {
     }
   });
 
-  // Get conversation between two users
+  // Busca conversas entre dois usuários
   app.get("/api/messages/conversation/:userId", authenticateToken, async (req: Request, res: Response) => {
     try {
       const messages = await storage.getConversation(req.user!.userId, req.params.userId);
@@ -36,7 +36,7 @@ export function registerMessageRoutes(app: Express) {
     }
   });
 
-  // Get messages received by current user
+  // Lista mensagens recebidas pelo usuário logado
   app.get("/api/messages/received", authenticateToken, async (req: Request, res: Response) => {
     try {
       const messages = await storage.getReceivedMessages(req.user!.userId);

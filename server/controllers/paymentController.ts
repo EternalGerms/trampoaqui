@@ -6,7 +6,7 @@ import { createLogger } from "../utils/logger.js";
 const logger = createLogger("payment");
 
 export function registerPaymentRoutes(app: Express) {
-  // Process payment for a request
+  // Processa pagamento de uma solicitação
   app.post("/api/requests/:id/payment", authenticateToken, async (req: Request, res: Response) => {
     try {
       const { paymentMethod } = req.body;
@@ -20,12 +20,12 @@ export function registerPaymentRoutes(app: Express) {
         return res.status(404).json({ message: "Request not found" });
       }
       
-      // Check if user is the client of this request
+      // Verifica se o usuário é o cliente da solicitação
       if (request.clientId !== req.user!.userId) {
         return res.status(403).json({ message: "Unauthorized" });
       }
       
-      // Check if request is in payment_pending status
+      // Verifica se a solicitação está em payment_pending
       if (request.status !== 'payment_pending') {
         return res.status(400).json({ message: "Request is not in payment pending status" });
       }
@@ -45,7 +45,7 @@ export function registerPaymentRoutes(app: Express) {
     }
   });
 
-  // Complete payment for a request
+  // Conclui o pagamento de uma solicitação
   app.post("/api/requests/:id/complete-payment", authenticateToken, async (req: Request, res: Response) => {
     try {
       const request = await storage.getServiceRequest(req.params.id);
@@ -53,12 +53,12 @@ export function registerPaymentRoutes(app: Express) {
         return res.status(404).json({ message: "Request not found" });
       }
       
-      // Check if user is the client of this request
+      // Verifica se o usuário é o cliente da solicitação
       if (request.clientId !== req.user!.userId) {
         return res.status(403).json({ message: "Unauthorized" });
       }
       
-      // Check if request has payment method set
+      // Verifica se há método de pagamento definido
       if (!request.paymentMethod) {
         return res.status(400).json({ message: "Payment method not set" });
       }

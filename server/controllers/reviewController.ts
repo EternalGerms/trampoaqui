@@ -8,7 +8,7 @@ import { createLogger } from "../utils/logger.js";
 const logger = createLogger("review");
 
 export function registerReviewRoutes(app: Express) {
-  // Create review
+  // Cria avaliação
   app.post("/api/reviews", authenticateToken, async (req: Request, res: Response) => {
     try {
       const reviewData = insertReviewSchema.parse({
@@ -23,7 +23,7 @@ export function registerReviewRoutes(app: Express) {
     }
   });
 
-  // Get reviews by provider
+  // Lista avaliações por prestador
   app.get("/api/reviews/provider/:providerId", async (req: Request, res: Response) => {
     try {
       const reviews = await storage.getReviewsByProvider(req.params.providerId);
@@ -33,7 +33,7 @@ export function registerReviewRoutes(app: Express) {
     }
   });
 
-  // Get reviews by provider user id
+  // Lista avaliações pelo usuário prestador
   app.get("/api/providers/user/:userId/reviews", async (req: Request, res: Response) => {
     try {
       const reviews = await storage.getReviewsByProviderUser(req.params.userId);
@@ -49,7 +49,7 @@ export function registerReviewRoutes(app: Express) {
     }
   });
 
-  // Get reviews by specific service provider
+  // Lista avaliações de um prestador específico
   app.get("/api/reviews/service-provider/:serviceProviderId", async (req: Request, res: Response) => {
     try {
       const reviews = await storage.getReviewsByServiceProvider(req.params.serviceProviderId);
@@ -65,7 +65,7 @@ export function registerReviewRoutes(app: Express) {
     }
   });
 
-  // Get reviews received by user (as client)
+  // Lista avaliações recebidas pelo usuário (como cliente)
   app.get("/api/reviews/user/:userId/received", async (req: Request, res: Response) => {
     try {
       const reviews = await storage.getReviewsByUserReceived(req.params.userId);
@@ -81,7 +81,7 @@ export function registerReviewRoutes(app: Express) {
     }
   });
 
-  // Get reviews sent by user (as client)
+  // Lista avaliações enviadas pelo usuário (como cliente)
   app.get("/api/reviews/user/:userId/sent", async (req: Request, res: Response) => {
     try {
       const reviews = await storage.getReviewsByUserSent(req.params.userId);
@@ -97,7 +97,7 @@ export function registerReviewRoutes(app: Express) {
     }
   });
 
-  // Get reviews received by user as provider
+  // Lista avaliações recebidas pelo usuário como prestador
   app.get("/api/reviews/provider/user/:userId/received", async (req: Request, res: Response) => {
     try {
       const reviews = await storage.getReviewsByProviderUser(req.params.userId);
@@ -113,7 +113,7 @@ export function registerReviewRoutes(app: Express) {
     }
   });
 
-  // Get reviews received by user as client
+  // Lista avaliações recebidas pelo usuário como cliente
   app.get("/api/reviews/client/user/:userId/received", async (req: Request, res: Response) => {
     try {
       const reviews = await storage.getReviewsByUserAsClientReceived(req.params.userId);
@@ -129,7 +129,7 @@ export function registerReviewRoutes(app: Express) {
     }
   });
 
-  // Get reviews sent by user as client
+  // Lista avaliações enviadas pelo usuário como cliente
   app.get("/api/reviews/client/user/:userId/sent", async (req: Request, res: Response) => {
     try {
       const reviews = await storage.getReviewsByUserAsClientSent(req.params.userId);
@@ -145,7 +145,7 @@ export function registerReviewRoutes(app: Express) {
     }
   });
 
-  // Get reviews received by user as provider (specific)
+  // Lista avaliações recebidas pelo usuário como prestador (detalhado)
   app.get("/api/reviews/provider/user/:userId/received-specific", async (req: Request, res: Response) => {
     try {
       const reviews = await storage.getReviewsByUserAsProviderReceived(req.params.userId);

@@ -31,7 +31,7 @@ import { createLogger } from "./utils/logger.js";
 const logger = createLogger("storage");
 
 export interface IStorage {
-  // User operations
+  // Operações de usuário
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByCPF(cpf: string): Promise<User | undefined>;
@@ -53,11 +53,11 @@ export interface IStorage {
   }): Promise<User>;
   enableProviderCapability(userId: string): Promise<User>;
   
-  // Service Category operations
+  // Operações de categorias de serviço
   getAllServiceCategories(): Promise<ServiceCategory[]>;
   createServiceCategory(category: InsertServiceCategory): Promise<ServiceCategory>;
   
-  // Service Provider operations
+  // Operações de prestadores de serviço
   getServiceProvider(id: string): Promise<ServiceProvider | undefined>;
   getServiceProviderWithDetails(id: string): Promise<(ServiceProvider & { user: User; category: ServiceCategory; averageRating: number; reviewCount: number }) | undefined>;
   getServiceProvidersByUserIdWithDetails(userId: string): Promise<(ServiceProvider & { category: ServiceCategory; averageRating: number; reviewCount: number; })[]>;
@@ -69,7 +69,7 @@ export interface IStorage {
   updateServiceProvider(id: string, provider: Partial<InsertServiceProvider>): Promise<ServiceProvider>;
   deleteServiceProvider(id: string): Promise<void>;
   
-  // Service Request operations
+  // Operações de solicitações de serviço
   getServiceRequest(id: string): Promise<ServiceRequest | undefined>;
   getServiceRequestsByClient(clientId: string): Promise<ServiceRequest[]>;
   getServiceRequestsByClientWithNegotiations(clientId: string): Promise<(ServiceRequest & { 
@@ -88,7 +88,7 @@ export interface IStorage {
   updateServiceRequest(id: string, request: Partial<InsertServiceRequest>): Promise<ServiceRequest>;
   updateRequestStatus(requestId: string, status: string): Promise<void>;
   
-  // Review operations
+  // Operações de avaliações
   getReviewsByProvider(providerId: string): Promise<(Review & { reviewer: User })[]>;
   getReviewsByProviderUser(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
   getReviewsByServiceProvider(serviceProviderId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
@@ -99,30 +99,30 @@ export interface IStorage {
   getReviewsByUserAsProviderReceived(userId: string): Promise<(Review & { reviewer: User, serviceRequest: ServiceRequest & { category: ServiceCategory } })[]>;
   createReview(review: InsertReview): Promise<Review>;
   
-  // Message operations
+  // Operações de mensagens
   getMessagesByRequest(requestId: string): Promise<Message[]>;
   getConversation(senderId: string, receiverId: string): Promise<Message[]>;
   getReceivedMessages(userId: string): Promise<(Message & { sender: User })[]>;
   createMessage(message: InsertMessage): Promise<Message>;
   markMessageAsRead(id: string): Promise<void>;
 
-  // Negotiation operations
+  // Operações de negociações
   createNegotiation(negotiation: InsertNegotiation): Promise<Negotiation>;
   updateNegotiationStatus(negotiationId: string, status: 'accepted' | 'rejected' | 'counter_proposed'): Promise<void>;
   getNegotiationById(negotiationId: string): Promise<Negotiation | undefined>;
   getNegotiationsByRequest(requestId: string): Promise<(Negotiation & { proposer: User })[]>;
 
-  // Payment operations
+  // Operações de pagamento
   updateServiceRequestPayment(requestId: string, paymentMethod: string): Promise<ServiceRequest>;
   completeServiceRequestPayment(requestId: string): Promise<ServiceRequest>;
 
-  // Balance operations
+  // Operações de saldo
   getUserBalance(userId: string): Promise<number>;
   updateUserBalance(userId: string, amount: number): Promise<User>;
   addToUserBalance(userId: string, amount: number): Promise<User>;
   subtractFromUserBalance(userId: string, amount: number): Promise<User>;
 
-  // Withdrawal operations
+  // Operações de saque
   createWithdrawal(withdrawal: InsertWithdrawal): Promise<Withdrawal>;
   getWithdrawalsByUser(userId: string): Promise<Withdrawal[]>;
   updateWithdrawalStatus(withdrawalId: string, status: 'pending' | 'completed' | 'cancelled'): Promise<Withdrawal>;
@@ -424,8 +424,7 @@ export class DatabaseStorage implements IStorage {
       const existingRequest = requestsMap.get(request.id)!;
 
       if (negotiation && !existingRequest.negotiations.some((n: any) => n.id === negotiation.id)) {
-        // Since we don't have proposer data here, we'll fetch it separately or adjust the query.
-        // For now, let's keep it simple. A better query would join users on proposerId as well.
+        // Sem dados do proponente aqui; buscamos depois ou ajustamos a query para incluir users.
         existingRequest.negotiations.push(negotiation);
       }
       
@@ -436,7 +435,7 @@ export class DatabaseStorage implements IStorage {
     
     const finalRequests = Array.from(requestsMap.values());
     
-    // Fetch proposers for negotiations - this is still N+1 but better than before on the main query
+    // Busca proponentes das negociações (ainda N+1, mas melhor que na query principal)
     for (const request of finalRequests) {
         if (request.negotiations.length > 0) {
             const proposerIds = request.negotiations.map((n: Negotiation) => n.proposerId);
@@ -517,11 +516,11 @@ export class DatabaseStorage implements IStorage {
       
     const finalRequests = Array.from(requestsMap.values());
       
-      // Fetch proposers for negotiations
+      // Busca proponentes das negociações
       for (const request of finalRequests) {
           if (request.negotiations.length > 0) {
               const proposerIds = request.negotiations.map((n: Negotiation) => n.proposerId);
-              // fetch proposers from users table where id is in proposerIds
+              // Busca usuários cujo id está em proposerIds
               const proposers = await db.select().from(users).where(or(...proposerIds.map((id: string) => eq(users.id, id))));
               const proposersMap = new Map(proposers.map(p => [p.id, p]));
               request.negotiations = request.negotiations.map((n: Negotiation) => ({
@@ -583,7 +582,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(serviceRequests, eq(reviews.requestId, serviceRequests.id))
       .innerJoin(serviceProviders, eq(serviceRequests.providerId, serviceProviders.id))
       .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
-      .where(eq(reviews.revieweeId, userId)) // Correctly filter by the person being reviewed
+      .where(eq(reviews.revieweeId, userId)) // Filtra corretamente pela pessoa avaliada
       .orderBy(desc(reviews.createdAt));
 
     return results.map(r => ({
@@ -669,8 +668,8 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
       .where(
         and(
-          eq(reviews.revieweeId, userId), // User was reviewed
-          eq(serviceRequests.clientId, userId) // User was the client in the request
+          eq(reviews.revieweeId, userId), // Usuário foi avaliado
+          eq(serviceRequests.clientId, userId) // Usuário era o cliente na solicitação
         )
       )
       .orderBy(desc(reviews.createdAt));
@@ -695,8 +694,8 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
       .where(
         and(
-          eq(reviews.reviewerId, userId), // User made the review
-          eq(serviceRequests.clientId, userId) // User was the client in the request
+          eq(reviews.reviewerId, userId), // Usuário fez a avaliação
+          eq(serviceRequests.clientId, userId) // Usuário era o cliente na solicitação
         )
       )
       .orderBy(desc(reviews.createdAt));
@@ -721,8 +720,8 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(serviceCategories, eq(serviceProviders.categoryId, serviceCategories.id))
       .where(
         and(
-          eq(reviews.revieweeId, userId), // User was reviewed
-          eq(serviceProviders.userId, userId) // User was the provider in the request
+          eq(reviews.revieweeId, userId), // Usuário foi avaliado
+          eq(serviceProviders.userId, userId) // Usuário era o prestador na solicitação
         )
       )
       .orderBy(desc(reviews.createdAt));
@@ -831,7 +830,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  // Payment operations
+  // Operações de pagamento
   async updateServiceRequestPayment(requestId: string, paymentMethod: string): Promise<ServiceRequest> {
     const [result] = await db
       .update(serviceRequests)
@@ -856,7 +855,7 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  // Balance operations
+  // Operações de saldo
   async getUserBalance(userId: string): Promise<number> {
     const [user] = await db.select({ balance: users.balance }).from(users).where(eq(users.id, userId));
     return parseFloat(user?.balance || '0');
@@ -883,7 +882,7 @@ export class DatabaseStorage implements IStorage {
     return this.updateUserBalance(userId, newBalance);
   }
 
-  // Withdrawal operations
+  // Operações de saque
   async createWithdrawal(withdrawal: InsertWithdrawal): Promise<Withdrawal> {
     const [result] = await db.insert(withdrawals).values(withdrawal).returning();
     return result;

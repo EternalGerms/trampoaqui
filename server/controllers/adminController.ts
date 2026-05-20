@@ -9,19 +9,19 @@ import { createLogger } from "../utils/logger.js";
 const logger = createLogger("admin");
 
 export function registerAdminRoutes(app: Express) {
-  // Get admin dashboard data
+  // Busca dados do dashboard administrativo
   app.get("/api/admin/dashboard", authenticateToken, authenticateAdmin, async (req: Request, res: Response) => {
     try {
-      // Get system statistics
+      // Estatísticas do sistema
       const totalUsers = await db.select({ count: sql<number>`count(*)` }).from(users);
       const totalProviders = await db.select({ count: sql<number>`count(*)` }).from(serviceProviders);
       const totalRequests = await db.select({ count: sql<number>`count(*)` }).from(serviceRequests);
       const totalCategories = await db.select({ count: sql<number>`count(*)` }).from(serviceCategories);
       
-      // Get recent users
+      // Usuários recentes
       const recentUsers = await db.select().from(users).orderBy(desc(users.createdAt)).limit(10);
       
-      // Get recent service requests
+      // Solicitações recentes
       const recentRequests = await db
         .select({
           request: serviceRequests,
@@ -61,7 +61,7 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  // Get all users (admin only)
+  // Lista todos os usuários (somente admin)
   app.get("/api/admin/users", authenticateToken, authenticateAdmin, async (req: Request, res: Response) => {
     try {
       const { page = 1, limit = 20, search = '' } = req.query;
@@ -97,7 +97,7 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  // Get all service requests (admin only)
+  // Lista todas as solicitações (somente admin)
   app.get("/api/admin/requests", authenticateToken, authenticateAdmin, async (req: Request, res: Response) => {
     try {
       const { page = 1, limit = 20, status = '' } = req.query;
@@ -140,7 +140,7 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  // Update user admin status
+  // Atualiza status de administrador do usuário
   app.put("/api/admin/users/:id/admin", authenticateToken, authenticateAdmin, async (req: Request, res: Response) => {
     try {
       const { isAdmin } = req.body;
