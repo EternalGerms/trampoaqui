@@ -1,6 +1,6 @@
 # Multi-stage build para otimização
 # Stage 1: Build dependencies and application
-FROM node:25.6.1-trixie-slim AS builder
+FROM node:25.6.0-trixie-slim AS builder
 
 WORKDIR /app
 
