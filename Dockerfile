@@ -29,7 +29,7 @@ COPY shared/ ./shared/
 RUN npm run build
 
 # Stage 2: Production image
-FROM node:25.6.0-trixie-slim AS production
+FROM node:25.6.1-trixie-slim AS production
 
 WORKDIR /app
 
