@@ -42,7 +42,7 @@ export function registerWithdrawalRoutes(app: Express) {
     }
   });
 
-  // Get withdrawals for current user
+  // Lista saques do usuário logado
   app.get("/api/withdrawals", authenticateToken, async (req: Request, res: Response) => {
     try {
       const withdrawals = await storage.getWithdrawalsByUser(req.user!.userId);

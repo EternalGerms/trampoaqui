@@ -7,7 +7,7 @@ import { createLogger } from "../utils/logger.js";
 const logger = createLogger("user");
 
 export function registerUserRoutes(app: Express) {
-  // Get profile status
+  // Obtém status do perfil
   app.get("/api/auth/profile/status", authenticateToken, async (req: Request, res: Response) => {
     try {
       const user = await storage.getUser(req.user!.userId);
@@ -38,7 +38,7 @@ export function registerUserRoutes(app: Express) {
     }
   });
 
-  // Debug authentication
+  // Endpoint de debug de autenticação
   app.get("/api/debug/auth", authenticateToken, async (req: Request, res: Response) => {
     try {
       const user = await storage.getUser(req.user!.userId);
@@ -58,7 +58,7 @@ export function registerUserRoutes(app: Express) {
     }
   });
 
-  // Get user by ID
+  // Busca usuário por ID
   app.get("/api/users/:id", async (req: Request, res: Response) => {
     try {
       const user = await storage.getUser(req.params.id);
